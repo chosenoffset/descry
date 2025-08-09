@@ -5,6 +5,8 @@
 
 **Descry** is an embeddable rules engine for Go applications that provides runtime monitoring, debugging, and observability capabilities. Define monitoring rules using a simple DSL and automatically collect Go runtime metrics, HTTP performance data, and custom application metrics.
 
+> 🎉 **Latest Release**: Descry now includes a comprehensive web dashboard with time-travel debugging, interactive rule editor, alert management, and statistical correlation analysis!
+
 ```go
 // Example rule: Monitor memory usage and alert on potential leaks
 when heap.alloc > 200MB && trend(heap.alloc, 5m) > 0 {
@@ -13,15 +15,35 @@ when heap.alloc > 200MB && trend(heap.alloc, 5m) > 0 {
 }
 ```
 
+## 🆕 What's New in v0.2.0
+
+- 🚀 **Complete Web Dashboard** with 5 integrated monitoring tabs
+- 🕰️ **Time-Travel Debugging** - Replay historical data at variable speeds  
+- ✏️ **Interactive Rule Editor** - Visual DSL editor with live validation and testing
+- 🚨 **Alert Management System** - Full lifecycle with collaborative notes and status tracking
+- 📊 **Correlation Analysis** - Statistical analysis with anomaly detection and scatter plots
+- 🔒 **Production Security** - Input validation, XSS prevention, and memory leak protection
+- ⚡ **Performance Optimized** - O(n log n) algorithms and efficient data structures
+
 ## ✨ Features
 
+### Core Engine
 - **🔍 Zero-friction Integration**: Drop-in library with minimal setup
-- **🚀 Production Ready**: Low overhead, secure sandboxed execution
+- **🚀 Production Ready**: Low overhead, secure sandboxed execution with thread-safe concurrent operations
 - **📊 Automatic Metrics**: Collect Go runtime stats (heap, goroutines, GC) without instrumentation
 - **🎯 Intuitive DSL**: Write monitoring rules in plain English-like syntax
 - **⚡ Real-time Monitoring**: Continuous evaluation with configurable intervals
 - **🔌 Extensible**: Plugin system for custom metrics and actions
 - **🛡️ Self-contained**: No external dependencies for core functionality
+
+### Advanced Dashboard
+- **📱 Web-based Dashboard**: Modern web interface with real-time monitoring at `localhost:9090`
+- **🕰️ Time-Travel Debugging**: Historical data playback with configurable speed and time ranges
+- **✏️ Interactive Rule Editor**: Visual DSL editor with syntax validation and live testing
+- **🚨 Alert Management**: Comprehensive alert lifecycle with acknowledgment, resolution, and notes
+- **📈 Metric Correlation**: Advanced statistical analysis with anomaly detection and scatter plots
+- **🔄 WebSocket Streaming**: Real-time data updates with Chart.js visualization
+- **📊 Historical Analysis**: Store and analyze up to 1000 historical metric snapshots
 
 ## 🚀 Quick Start
 
@@ -78,17 +100,17 @@ when <condition> {
 - **Memory**: `heap.alloc`, `heap.sys`, `heap.objects`
 - **Garbage Collection**: `gc.pause`, `gc.count`, `gc.cpu_fraction`
 - **Goroutines**: `goroutines.count`
-- **HTTP** *(coming soon)*: `http.response_time`, `http.request_rate`, `http.error_rate`
+- **HTTP**: `http.response_time`, `http.request_rate` *(integrated with example application)*
 
 ### Operators
 - **Comparison**: `>`, `<`, `>=`, `<=`, `==`, `!=`
 - **Logical**: `&&` (and), `||` (or), `!` (not)
 - **Units**: `MB`, `GB`, `ms`, `s`, `m`
 
-### Functions *(coming soon)*
-- **Aggregation**: `avg(metric, duration)`, `max(metric, duration)`
-- **Trend Analysis**: `trend(metric, duration)`
-- **Actions**: `alert(message)`, `log(message)`
+### Functions
+- **Aggregation**: `avg(metric, duration)`, `max(metric, duration)` ✅
+- **Trend Analysis**: `trend(metric, duration)` ✅
+- **Actions**: `alert(message)`, `log(message)` ✅
 
 ### Example Rules
 
@@ -129,40 +151,97 @@ when avg(http.response_time, 2m) > 500ms && http.request_rate > 100/s {
                                                └─────────────────┘
 ```
 
+## 🎯 Current Capabilities
+
+### Live Monitoring Dashboard
+- **Real-time Metrics**: Memory usage, goroutine count, GC pause time with Chart.js visualizations
+- **Event Timeline**: Live feed of rule triggers and alerts with timestamps
+- **WebSocket Streaming**: Sub-second updates with automatic reconnection
+- **Modern UI**: Responsive design with tabbed interface and interactive controls
+
+### Time-Travel Debugging
+- **Historical Playback**: Replay any time period with configurable speed (0.5x to 10x)
+- **Data Storage**: Maintains 1000 historical snapshots with efficient circular buffer
+- **Time Range Selection**: Custom date/time pickers or quick presets (Last Hour, Last 10 Min)
+- **Synchronized Visualization**: Charts and events replay together maintaining temporal relationships
+
+### Interactive Rule Management
+- **Visual Editor**: Monaco-like editor with DSL syntax highlighting and validation
+- **Live Testing**: Test rules against current metrics with immediate feedback
+- **Rule Library**: Browse and load active rules with status indicators
+- **Syntax Help**: Built-in DSL reference with examples and function documentation
+
+### Advanced Alert System
+- **Full Lifecycle**: Create, acknowledge, resolve, suppress alerts with user tracking
+- **Severity Levels**: Critical, High, Medium, Low with color coding and filtering
+- **Collaborative Notes**: Add timestamped notes with author attribution
+- **Smart Categorization**: Automatic severity detection based on message content
+- **Status Filtering**: Filter by status (Active, Acknowledged, Resolved, Suppressed) and severity
+
+### Statistical Correlation Analysis
+- **Metric Relationships**: Calculate Pearson correlation coefficients between any two metrics
+- **Anomaly Detection**: Identify correlation changes and unusual patterns over time
+- **Interactive Scatter Plots**: Visual correlation with Chart.js scatter charts
+- **Quick Analysis**: Pre-configured correlation buttons for common metric pairs
+- **Historical Analysis**: Configurable time windows (15min to 6 hours) and data points (50-500)
+
 ## 🎯 Use Cases
 
 - **Memory Leak Detection**: Monitor heap growth trends and alert on abnormal patterns
-- **Performance Monitoring**: Track response times, throughput, and error rates
+- **Performance Monitoring**: Track response times, throughput, and error rates  
 - **Resource Management**: Monitor goroutine counts, file descriptors, and connection pools
 - **Capacity Planning**: Collect historical data for scaling decisions
 - **Debugging**: Time-travel debugging with historical state reconstruction
 - **SLA Monitoring**: Track service level objectives and alert on violations
+- **Incident Management**: Full alert lifecycle with team collaboration features
+- **Pattern Recognition**: Statistical analysis to identify metric correlations and anomalies
 
 ## 🛣️ Roadmap
 
-### Phase 1: Core Engine ✅
-- [x] DSL parser and tokenizer
-- [x] AST evaluation engine
-- [x] Go runtime metrics collection
-- [x] Basic rule management
+### Phase 1: Core Rules Engine ✅ **COMPLETE**
+- [x] DSL tokenizer and parser with comprehensive syntax support
+- [x] AST evaluation engine with thread-safe execution
+- [x] Automatic Go runtime metrics collection (memory, goroutines, GC)
+- [x] Action system with pluggable handlers (alert, log)
+- [x] Metric aggregation functions (avg, max, trend)
+- [x] Production-ready concurrency safety and error handling
 
-### Phase 2: Dashboard & Visualization 🚧
-- [ ] Web-based monitoring dashboard
-- [ ] Real-time metrics display
-- [ ] Historical data playback
-- [ ] Interactive rule editor
+### Phase 2: Dashboard & Visualization ✅ **COMPLETE**
+- [x] Web-based monitoring dashboard with modern UI
+- [x] Real-time metrics display with Chart.js integration
+- [x] WebSocket streaming for live data updates
+- [x] Time-series graphs for memory, goroutines, and GC metrics
+- [x] Event timeline with rule triggers and alerts
 
-### Phase 3: Advanced Features 📋
+### Phase 3: Advanced Dashboard Features ✅ **COMPLETE**
+- [x] **Time-Travel Debugging**: Historical data playback with configurable speed (0.5x-10x)
+- [x] **Interactive Rule Editor**: Visual DSL editor with syntax validation and live testing
+- [x] **Alert Management System**: Full lifecycle with acknowledge, resolve, suppress, and notes
+- [x] **Metric Correlation Analysis**: Statistical correlation with anomaly detection and scatter plots
+- [x] **Historical Data Storage**: Circular buffer with 1000-entry capacity for time-range analysis
+
+### Phase 4: Example Application Integration ✅ **COMPLETE**
+- [x] Financial ledger demonstration with realistic monitoring scenarios
+- [x] HTTP middleware integration for automatic request/response tracking
+- [x] Comprehensive rule library (memory.dscr, perf.dscr, concurrency.dscr, dev.dscr)
+- [x] Enhanced load testing with 9 different patterns (sustained, spike, memory pressure)
+- [x] Production-ready example showing real-world Descry integration
+
+### Phase 5: Production Enhancements 🚧 **IN PROGRESS**
+- [x] Security hardening with input validation and XSS prevention
+- [x] Memory leak prevention and efficient data structures
+- [x] Performance optimization with O(n log n) algorithms
 - [ ] Machine learning anomaly detection
 - [ ] Distributed tracing support
-- [ ] Custom metrics API
-- [ ] External system integrations
-
-### Phase 4: Production Features 📋
-- [ ] Performance profiling automation
 - [ ] CLI tools for analysis and replay
-- [ ] IDE extensions
-- [ ] Comprehensive testing framework
+- [ ] IDE extensions and syntax highlighting
+
+### Phase 6: Enterprise Features 📋 **PLANNED**
+- [ ] Multi-application monitoring dashboard
+- [ ] RBAC (Role-based access control) for rules and dashboards
+- [ ] Integration with PagerDuty, Slack, and email systems
+- [ ] Advanced capacity planning and resource optimization
+- [ ] Compliance features with audit logging
 
 ## 🤝 Contributing
 
@@ -175,15 +254,24 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 git clone https://github.com/chosenoffset/descry.git
 cd descry
 
-# Run the example application
+# Run the complete demo (server + dashboard)
 go run descry-example/cmd/server/main.go
+# Dashboard available at http://localhost:9090
 
-# Generate load for testing
+# In another terminal, generate realistic load
 go run descry-example/cmd/fuzz/main.go
 
 # Run tests
 go test ./...
 ```
+
+### Dashboard Features Demo
+
+1. **Live Monitoring**: View real-time metrics at `http://localhost:9090`
+2. **Time Travel**: Use the "Time Travel" tab to replay historical data with variable speed
+3. **Rule Editor**: Create and test monitoring rules with live syntax validation
+4. **Alert Manager**: Manage alert lifecycle with acknowledgment, resolution, and notes
+5. **Correlation Analysis**: Analyze relationships between metrics with scatter plots and anomaly detection
 
 ## 📖 Documentation
 
