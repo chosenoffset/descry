@@ -232,7 +232,7 @@ func TestASTComplexityCalculation(t *testing.T) {
 				t.Fatalf("Parse errors: %v", p.Errors())
 			}
 			
-			complexity := countASTNodes(program)
+			complexity := program.CountNodes()
 			
 			// Allow some flexibility in complexity calculation
 			if complexity < tc.expected/2 || complexity > tc.expected*2 {

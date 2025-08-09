@@ -12,11 +12,13 @@ import (
 	"github.com/chosenoffset/descry/pkg/descry/parser"
 )
 
+// Object is the base interface for values in the Descry evaluation system
 type Object interface {
 	Type() ObjectType
 	Inspect() string
 }
 
+// ObjectType identifies the type of values during rule evaluation
 type ObjectType string
 
 const (

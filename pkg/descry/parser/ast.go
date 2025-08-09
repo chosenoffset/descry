@@ -5,26 +5,31 @@ import (
 	"strings"
 )
 
+// Node is the base interface for all AST nodes in the Descry DSL
 type Node interface {
 	TokenLiteral() string
 	String() string
 }
 
 // NodeCounter interface for efficient AST node counting
+// Used for complexity analysis and resource limit enforcement
 type NodeCounter interface {
 	CountNodes() int
 }
 
+// Statement represents executable statements in the Descry DSL
 type Statement interface {
 	Node
 	statementNode()
 }
 
+// Expression represents evaluable expressions in the Descry DSL
 type Expression interface {
 	Node
 	expressionNode()
 }
 
+// Program is the root AST node that contains all statements in a Descry rule
 type Program struct {
 	Statements []Statement
 }

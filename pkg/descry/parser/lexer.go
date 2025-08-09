@@ -1,5 +1,24 @@
+// Package parser provides lexical analysis and parsing for the Descry DSL.
+// It includes a tokenizer (lexer) that breaks rule text into tokens,
+// and a parser that builds an Abstract Syntax Tree (AST) for efficient evaluation.
+//
+// The parser supports the Descry DSL syntax:
+//
+//	when <condition> { <action> }
+//
+// Example DSL expressions:
+//
+//	when heap.alloc > 200MB { alert("Memory usage high") }
+//	when avg(http.response_time, 5m) > 500ms { log("Slow responses") }
+//	when goroutines.count > 1000 && trend(heap.alloc, 2m) > 0 { alert("Resource leak") }
+//
+// The lexer recognizes tokens including keywords (when, if), operators (>, <, ==, &&, ||),
+// literals (strings, numbers, units like MB/GB/ms), identifiers, and delimiters.
+//
+// The parser builds an AST that can be evaluated efficiently during runtime monitoring.
 package parser
 
+// TokenType represents the different types of tokens in the Descry DSL
 type TokenType int
 
 const (
@@ -47,11 +66,17 @@ const (
 	M  // minutes
 )
 
+// Token represents a single lexical unit in the Descry DSL with position information
 type Token struct {
+	// Type identifies the kind of token (keyword, operator, literal, etc.)
 	Type     TokenType
+	// Literal is the actual text from the source
 	Literal  string
+	// Position is the character offset in the input
 	Position int
+	// Line is the line number (1-based)
 	Line     int
+	// Column is the column number (1-based)
 	Column   int
 }
 
@@ -65,6 +90,8 @@ var keywords = map[string]TokenType{
 	"m":    M,
 }
 
+// Lexer performs lexical analysis on Descry DSL source text,
+// converting it into a sequence of tokens for parsing.
 type Lexer struct {
 	input        string
 	position     int  // current position in input (points to current char)
@@ -74,6 +101,7 @@ type Lexer struct {
 	column       int
 }
 
+// NewLexer creates a new lexer for the given Descry DSL source text
 func NewLexer(input string) *Lexer {
 	l := &Lexer{
 		input:  input,

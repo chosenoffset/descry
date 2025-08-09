@@ -36,6 +36,8 @@ type (
 	infixParseFn  func(Expression) Expression
 )
 
+// Parser converts a stream of tokens from the lexer into an Abstract Syntax Tree (AST)
+// using recursive descent parsing with operator precedence.
 type Parser struct {
 	l *Lexer
 
@@ -48,6 +50,8 @@ type Parser struct {
 	infixParseFns  map[TokenType]infixParseFn
 }
 
+// New creates a new parser with the given lexer and registers
+// the parsing functions for different token types.
 func New(l *Lexer) *Parser {
 	p := &Parser{
 		l:      l,

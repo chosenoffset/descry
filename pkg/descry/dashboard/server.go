@@ -1,3 +1,32 @@
+// Package dashboard provides a comprehensive web-based interface for Descry monitoring.
+// It includes real-time metric visualization, time-travel debugging, rule management,
+// alert handling, and statistical analysis capabilities.
+//
+// The dashboard consists of five main tabs:
+//   1. Live Monitoring: Real-time charts and system health overview
+//   2. Time Travel: Historical playback with configurable speed control
+//   3. Rule Editor: Interactive rule creation and testing with syntax validation
+//   4. Alert Manager: Comprehensive alert lifecycle management with collaboration
+//   5. Metric Correlation: Statistical analysis and anomaly detection
+//
+// Features include:
+//   - WebSocket-based real-time updates for minimal latency
+//   - Interactive charts using Chart.js with zoom and pan capabilities
+//   - Time-travel debugging with 0.5x to 10x playback speeds
+//   - Collaborative alert management with notes and assignments
+//   - Pearson correlation analysis with anomaly detection
+//   - Security hardening with input validation and XSS prevention
+//
+// The dashboard is accessible at http://localhost:9090 (configurable port)
+// and provides a production-ready monitoring interface for embedded applications.
+//
+// Example usage:
+//
+//	server := dashboard.NewServer(9090)
+//	server.SetRulesProvider(func() interface{} {
+//		return getRulesFromEngine()
+//	})
+//	go server.Start()
 package dashboard
 
 import (
@@ -15,6 +44,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Server provides the main dashboard web server with WebSocket support
+// for real-time updates, historical data storage, and alert management
 type Server struct {
 	port           int
 	server         *http.Server
@@ -40,11 +71,15 @@ type Server struct {
 	alertsByStatus    map[AlertStatus][]Alert
 }
 
+// MetricUpdate represents a timestamped collection of metrics
+// sent to connected dashboard clients via WebSocket
 type MetricUpdate struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Metrics   map[string]interface{} `json:"metrics"`
 }
 
+// EventUpdate represents a rule trigger or system event
+// displayed in the dashboard timeline
 type EventUpdate struct {
 	Timestamp time.Time   `json:"timestamp"`
 	Type      string      `json:"type"`
@@ -53,6 +88,7 @@ type EventUpdate struct {
 	Data      interface{} `json:"data"`
 }
 
+// AlertStatus represents the current state of an alert in the management system
 type AlertStatus string
 
 const (

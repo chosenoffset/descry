@@ -1,3 +1,49 @@
+// Package descry provides a rules engine for runtime monitoring and observability
+// of Go applications. It features a DSL for defining monitoring rules, automatic
+// metric collection, and a web-based dashboard for real-time visualization.
+//
+// # Quick Start
+//
+// Create a new engine and add monitoring rules:
+//
+//	engine := descry.NewEngine()
+//	engine.Start()
+//
+//	// Add a rule to monitor memory usage
+//	err := engine.AddRule("memory_check", `
+//		when heap.alloc > 200MB {
+//			alert("High memory usage: ${heap.alloc}")
+//		}
+//	`)
+//
+// # Integration with HTTP Applications
+//
+// Descry provides middleware for automatic HTTP monitoring:
+//
+//	http.Handle("/api/", engine.HTTPMiddleware()(apiHandler))
+//
+// # Dashboard
+//
+// Access the web dashboard at http://localhost:9090 for real-time monitoring,
+// time-travel debugging, rule management, and metric correlation analysis.
+//
+// # Resource Management
+//
+// Descry includes built-in resource limits and sandboxing to ensure safe
+// execution of monitoring rules without impacting application performance.
+//
+// # DSL Reference
+//
+// The Descry DSL supports monitoring expressions with conditions and actions:
+//
+//	when <condition> { <action> }
+//
+// Available metrics: heap.alloc, heap.sys, goroutines.count, gc.pause,
+// http.response_time, http.request_rate, and custom metrics.
+//
+// Available functions: alert(), log(), avg(), max(), trend().
+//
+// See the project documentation for complete DSL syntax and examples.
 package descry
 
 import (
@@ -13,6 +59,9 @@ import (
 	"github.com/chosenoffset/descry/pkg/descry/parser"
 )
 
+// Engine is the main Descry monitoring engine that manages rule execution,
+// metric collection, and provides a web dashboard for visualization.
+// It is thread-safe and designed for embedding in Go applications.
 type Engine struct {
 	runtimeCollector *metrics.RuntimeCollector
 	httpMetrics      *metrics.HTTPMetrics
@@ -33,10 +82,16 @@ type Engine struct {
 	metricsMutex     sync.RWMutex
 }
 
+// Rule represents a compiled monitoring rule with its parsed AST
+// and execution metadata.
 type Rule struct {
+	// Name is the unique identifier for this rule
 	Name        string
+	// Source is the original DSL rule text
 	Source      string
+	// AST is the parsed abstract syntax tree for efficient evaluation
 	AST         *parser.Program
+	// LastTrigger tracks when this rule last matched its condition
 	LastTrigger time.Time
 }
 
@@ -64,6 +119,11 @@ func DefaultResourceLimits() *ResourceLimits {
 	}
 }
 
+// NewEngine creates a new Descry monitoring engine with default configuration.
+// The engine includes automatic Go runtime metric collection, HTTP monitoring
+// middleware, and a web dashboard server on port 9090.
+//
+// The engine is not started by default - call Start() to begin monitoring.
 func NewEngine() *Engine {
 	engine := &Engine{
 		runtimeCollector: metrics.NewRuntimeCollector(1000, 100*time.Millisecond),
@@ -107,6 +167,12 @@ func NewEngine() *Engine {
 	return engine
 }
 
+// Start begins the monitoring engine's operation. This includes:
+// - Starting automatic Go runtime metric collection
+// - Launching the web dashboard server
+// - Beginning the rule evaluation loop
+//
+// Start is idempotent - calling it multiple times has no effect.
 func (e *Engine) Start() {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
@@ -136,6 +202,10 @@ func (e *Engine) Start() {
 	go e.evaluationLoop()
 }
 
+// Stop halts the monitoring engine's operation and cleanly shuts down
+// all background processes including metric collection and the dashboard server.
+//
+// Stop is idempotent - calling it multiple times has no effect.
 func (e *Engine) Stop() {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
@@ -151,6 +221,17 @@ func (e *Engine) Stop() {
 	e.dashboard.Stop()
 }
 
+// AddRule parses and adds a new monitoring rule to the engine.
+// The rule will be evaluated continuously once the engine is started.
+//
+// Parameters:
+//   - name: Unique identifier for the rule
+//   - source: DSL rule text (e.g., "when heap.alloc > 200MB { alert(\"High memory\") }")
+//
+// Returns an error if:
+//   - The rule has syntax errors
+//   - The rule name already exists
+//   - Resource limits are exceeded (max rules, complexity)
 func (e *Engine) AddRule(name, source string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
@@ -209,6 +290,10 @@ func (e *Engine) EvaluateRules() {
 }
 
 // UpdateCustomMetric updates a custom metric value with limits checking
+// UpdateCustomMetric sets the value of a custom application metric
+// that can be referenced in rules (e.g., "custom.orders_per_second").
+//
+// Custom metrics are subject to the MaxCustomMetrics resource limit.
 func (e *Engine) UpdateCustomMetric(name string, value float64) error {
 	e.metricsMutex.Lock()
 	defer e.metricsMutex.Unlock()
@@ -225,6 +310,8 @@ func (e *Engine) UpdateCustomMetric(name string, value float64) error {
 }
 
 // GetCustomMetric retrieves a custom metric value
+// GetCustomMetric retrieves the current value of a custom metric.
+// Returns the value and true if the metric exists, or 0 and false if not found.
 func (e *Engine) GetCustomMetric(name string) (float64, bool) {
 	e.metricsMutex.RLock()
 	defer e.metricsMutex.RUnlock()
@@ -253,14 +340,25 @@ func (e *Engine) StartDashboard() error {
 	return e.dashboard.Start()
 }
 
+// GetRuntimeMetrics returns the current Go runtime metrics snapshot
+// including memory usage, goroutine counts, and garbage collection statistics.
 func (e *Engine) GetRuntimeMetrics() metrics.RuntimeMetrics {
 	return e.runtimeCollector.GetCurrent()
 }
 
+// GetHTTPMetrics returns the current HTTP performance statistics
+// including request counts, response times, and error rates.
 func (e *Engine) GetHTTPMetrics() metrics.HTTPStats {
 	return e.httpMetrics.GetStats()
 }
 
+// HTTPMiddleware returns HTTP middleware that automatically collects
+// request metrics including response times, status codes, and request rates.
+// These metrics are available in rules as http.response_time, http.request_rate, etc.
+//
+// Example usage:
+//
+//	http.Handle("/api/", engine.HTTPMiddleware()(apiHandler))
 func (e *Engine) HTTPMiddleware() func(http.HandlerFunc) http.HandlerFunc {
 	return e.httpMetrics.Middleware
 }

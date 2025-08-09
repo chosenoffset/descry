@@ -1,7 +1,9 @@
 package descry
 
 import (
+	"fmt"
 	"strings"
+	"time"
 	"testing"
 )
 
@@ -261,8 +263,3 @@ func TestInputSanitization(t *testing.T) {
 	}
 }
 
-// Import required for test functions
-import (
-	"fmt"
-	"time"
-)

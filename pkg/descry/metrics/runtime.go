@@ -1,3 +1,25 @@
+// Package metrics provides automatic collection of Go runtime and HTTP performance metrics
+// for use in Descry monitoring rules. It includes collectors for memory usage, garbage collection,
+// goroutine counts, and HTTP request statistics.
+//
+// Runtime metrics are collected automatically in the background and include:
+//   - Memory metrics: heap allocation, system memory, objects count
+//   - Garbage collection: GC frequency, pause times, CPU fraction
+//   - Goroutine counts and CGO call statistics
+//
+// HTTP metrics are collected via middleware and include:
+//   - Request counts and rates
+//   - Response times (average, maximum)
+//   - Error rates and pending requests
+//
+// Example usage:
+//
+//	collector := metrics.NewRuntimeCollector(1000, 100*time.Millisecond)
+//	collector.Start()
+//	defer collector.Stop()
+//
+//	current := collector.GetCurrent()
+//	fmt.Printf("Heap allocated: %d bytes\n", current.HeapAlloc)
 package metrics
 
 import (
@@ -6,6 +28,8 @@ import (
 	"time"
 )
 
+// RuntimeMetrics contains a snapshot of Go runtime statistics
+// collected at a specific point in time for monitoring purposes
 type RuntimeMetrics struct {
 	// Memory metrics
 	HeapAlloc      uint64    `json:"heap_alloc"`
@@ -39,6 +63,8 @@ type RuntimeMetrics struct {
 	Timestamp      time.Time `json:"timestamp"`
 }
 
+// RuntimeCollector automatically collects Go runtime metrics in the background
+// and maintains a historical buffer for trend analysis
 type RuntimeCollector struct {
 	mu             sync.RWMutex
 	current        RuntimeMetrics
@@ -49,6 +75,8 @@ type RuntimeCollector struct {
 	running        bool
 }
 
+// NewRuntimeCollector creates a new runtime metrics collector with the specified
+// history buffer size and collection interval.
 func NewRuntimeCollector(maxHistory int, collectInterval time.Duration) *RuntimeCollector {
 	return &RuntimeCollector{
 		history:         make([]RuntimeMetrics, 0, maxHistory),
@@ -58,6 +86,7 @@ func NewRuntimeCollector(maxHistory int, collectInterval time.Duration) *Runtime
 	}
 }
 
+// Start begins automatic collection of runtime metrics in a background goroutine
 func (rc *RuntimeCollector) Start() {
 	rc.mu.Lock()
 	if rc.running {
@@ -70,6 +99,7 @@ func (rc *RuntimeCollector) Start() {
 	go rc.collectLoop()
 }
 
+// Stop halts the metrics collection and cleans up background resources
 func (rc *RuntimeCollector) Stop() {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()

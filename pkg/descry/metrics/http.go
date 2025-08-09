@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-// HTTPMetrics tracks HTTP request/response statistics
+// HTTPMetrics tracks HTTP request/response statistics for performance monitoring.
+// It maintains counters, response times, and statistical data for analysis.
 type HTTPMetrics struct {
 	requestCount     int64         // Total requests
 	errorCount       int64         // Error responses (>= 400)
@@ -23,7 +24,8 @@ type HTTPMetrics struct {
 	maxSamples       int
 }
 
-// NewHTTPMetrics creates a new HTTP metrics collector
+// NewHTTPMetrics creates a new HTTP metrics collector with the specified
+// maximum number of response time samples for statistical analysis.
 func NewHTTPMetrics(maxSamples int) *HTTPMetrics {
 	if maxSamples <= 0 {
 		maxSamples = 1000 // Default sample size
@@ -37,6 +39,7 @@ func NewHTTPMetrics(maxSamples int) *HTTPMetrics {
 }
 
 // HTTPStats represents current HTTP performance statistics
+// computed from collected metrics data
 type HTTPStats struct {
 	RequestCount      int64   `json:"request_count"`
 	ErrorCount        int64   `json:"error_count"`
@@ -48,7 +51,8 @@ type HTTPStats struct {
 	Timestamp         time.Time `json:"timestamp"`
 }
 
-// ResponseWriter wrapper to capture status codes
+// responseWriter is an internal wrapper around http.ResponseWriter
+// to capture status codes and response data for metrics
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
