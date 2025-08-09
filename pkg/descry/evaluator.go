@@ -1,6 +1,7 @@
 package descry
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -98,27 +99,38 @@ func (e *Evaluator) getCurrentRuleName() string {
 }
 
 func (e *Evaluator) Eval(node parser.Node) Object {
-	// Don't hold lock during evaluation - only when accessing shared state
+	// Use background context for backward compatibility
+	return e.EvalWithContext(context.Background(), node)
+}
 
+func (e *Evaluator) EvalWithContext(ctx context.Context, node parser.Node) Object {
+	// Check for context cancellation before each evaluation step
+	select {
+	case <-ctx.Done():
+		return &Error{Message: fmt.Sprintf("evaluation cancelled: %v", ctx.Err())}
+	default:
+	}
+	
+	// Don't hold lock during evaluation - only when accessing shared state
 	switch node := node.(type) {
 	case *parser.Program:
-		return e.evalProgram(node.Statements)
+		return e.evalProgramWithContext(ctx, node.Statements)
 
 	case *parser.WhenStatement:
-		return e.evalWhenStatement(node)
+		return e.evalWhenStatementWithContext(ctx, node)
 
 	case *parser.ExpressionStatement:
-		return e.Eval(node.Expression)
+		return e.EvalWithContext(ctx, node.Expression)
 
 	case *parser.BlockStatement:
-		return e.evalBlockStatement(node.Statements)
+		return e.evalBlockStatementWithContext(ctx, node.Statements)
 
 	case *parser.InfixExpression:
-		left := e.Eval(node.Left)
+		left := e.EvalWithContext(ctx, node.Left)
 		if isError(left) {
 			return left
 		}
-		right := e.Eval(node.Right)
+		right := e.EvalWithContext(ctx, node.Right)
 		if isError(right) {
 			return right
 		}
@@ -164,6 +176,27 @@ func (e *Evaluator) evalProgram(stmts []parser.Statement) Object {
 	return result
 }
 
+func (e *Evaluator) evalProgramWithContext(ctx context.Context, stmts []parser.Statement) Object {
+	var result Object
+
+	for _, statement := range stmts {
+		// Check context cancellation between statements
+		select {
+		case <-ctx.Done():
+			return &Error{Message: fmt.Sprintf("program evaluation cancelled: %v", ctx.Err())}
+		default:
+		}
+		
+		result = e.EvalWithContext(ctx, statement)
+
+		if result != nil && result.Type() == ERROR_OBJ {
+			return result
+		}
+	}
+
+	return result
+}
+
 func (e *Evaluator) evalWhenStatement(node *parser.WhenStatement) Object {
 	condition := e.Eval(node.Condition)
 	if isError(condition) {
@@ -182,11 +215,64 @@ func (e *Evaluator) evalWhenStatement(node *parser.WhenStatement) Object {
 	return NULL
 }
 
+func (e *Evaluator) evalWhenStatementWithContext(ctx context.Context, node *parser.WhenStatement) Object {
+	// Check context before condition evaluation
+	select {
+	case <-ctx.Done():
+		return &Error{Message: fmt.Sprintf("when statement evaluation cancelled: %v", ctx.Err())}
+	default:
+	}
+	
+	condition := e.EvalWithContext(ctx, node.Condition)
+	if isError(condition) {
+		return condition
+	}
+
+	if isTruthy(condition) {
+		// Check context before body evaluation
+		select {
+		case <-ctx.Done():
+			return &Error{Message: fmt.Sprintf("when statement body evaluation cancelled: %v", ctx.Err())}
+		default:
+		}
+		
+		result := e.EvalWithContext(ctx, node.Body)
+		if isError(result) {
+			return result
+		}
+		// Return a special indicator that the rule was triggered
+		return RULE_TRIGGERED
+	}
+
+	return NULL
+}
+
 func (e *Evaluator) evalBlockStatement(stmts []parser.Statement) Object {
 	var result Object
 
 	for _, statement := range stmts {
 		result = e.Eval(statement)
+
+		if result != nil && result.Type() == ERROR_OBJ {
+			return result
+		}
+	}
+
+	return result
+}
+
+func (e *Evaluator) evalBlockStatementWithContext(ctx context.Context, stmts []parser.Statement) Object {
+	var result Object
+
+	for _, statement := range stmts {
+		// Check context cancellation between statements
+		select {
+		case <-ctx.Done():
+			return &Error{Message: fmt.Sprintf("block statement evaluation cancelled: %v", ctx.Err())}
+		default:
+		}
+		
+		result = e.EvalWithContext(ctx, statement)
 
 		if result != nil && result.Type() == ERROR_OBJ {
 			return result

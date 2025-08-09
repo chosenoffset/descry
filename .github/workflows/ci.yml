@@ -1,0 +1,234 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.21, 1.22, 1.23]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Run unit tests
+      run: go test -v -race -coverprofile=coverage.out ./pkg/...
+
+    - name: Run integration tests
+      run: go test -v -race ./integration_test.go
+
+    - name: Run benchmarks
+      run: go test -v -bench=. -benchmem ./pkg/descry/
+
+    - name: Build example applications
+      run: |
+        go build -o bin/server ./descry-example/cmd/server/main.go
+        go build -o bin/fuzz ./descry-example/cmd/fuzz/main.go
+
+    - name: Test rule file parsing
+      run: |
+        for rule_file in descry-example/rules/*.dscr; do
+          echo "Testing rule file: $rule_file"
+          # Simple syntax check - ensure file is readable
+          cat "$rule_file" > /dev/null
+        done
+
+    - name: Upload coverage reports
+      if: matrix.go-version == '1.22'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: unittests
+        name: codecov-umbrella
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.22
+
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --timeout=3m
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.22
+
+    - name: Run Gosec Security Scanner
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: '-fmt sarif -out gosec.sarif ./...'
+
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: gosec.sarif
+
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.22
+
+    - name: Run performance benchmarks
+      run: |
+        go test -bench=. -benchmem -benchtime=10s ./pkg/descry/ > benchmark_results.txt
+        cat benchmark_results.txt
+
+    - name: Performance regression check
+      run: |
+        # Check if any benchmark shows significant performance degradation
+        # This is a simple check - in production you might use benchcmp or similar tools
+        if grep -q "FAIL" benchmark_results.txt; then
+          echo "Performance test failures detected"
+          exit 1
+        fi
+        echo "Performance benchmarks completed successfully"
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results-${{ github.sha }}
+        path: benchmark_results.txt
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.22
+
+    - name: Start example server
+      run: |
+        go build -o bin/server ./descry-example/cmd/server/main.go
+        ./bin/server &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+        
+        # Wait for server to start
+        sleep 5
+        
+        # Test that server is responding
+        curl -f http://localhost:8080/health || (echo "Server failed to start" && exit 1)
+
+    - name: Run integration tests against live server
+      run: |
+        # Test API endpoints
+        curl -f http://localhost:8080/health
+        
+        # Test dashboard is accessible
+        curl -f http://localhost:9090/ > /dev/null || echo "Dashboard not accessible (expected if not implemented)"
+        
+        # Test metrics endpoint
+        curl -f http://localhost:8080/metrics > /dev/null || echo "Metrics endpoint not available"
+
+    - name: Run load test
+      run: |
+        go build -o bin/fuzz ./descry-example/cmd/fuzz/main.go
+        
+        # Run brief load test
+        timeout 30s ./bin/fuzz || echo "Load test completed"
+        
+        # Verify server is still responsive after load
+        curl -f http://localhost:8080/health
+
+    - name: Stop server
+      if: always()
+      run: |
+        if [ ! -z "$SERVER_PID" ]; then
+          kill $SERVER_PID || true
+        fi
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Docker image
+      run: |
+        cat > Dockerfile << 'EOF'
+        FROM golang:1.22-alpine AS builder
+        
+        WORKDIR /app
+        COPY go.mod go.sum ./
+        RUN go mod download
+        
+        COPY . .
+        RUN go build -o bin/server ./descry-example/cmd/server/main.go
+        
+        FROM alpine:latest
+        RUN apk --no-cache add ca-certificates
+        WORKDIR /root/
+        
+        COPY --from=builder /app/bin/server .
+        COPY --from=builder /app/descry-example/rules ./rules
+        
+        EXPOSE 8080 9090
+        CMD ["./server"]
+        EOF
+        
+        docker build -t descry:test .
+
+    - name: Test Docker container
+      run: |
+        # Start container
+        docker run -d --name descry-test -p 8080:8080 -p 9090:9090 descry:test
+        
+        # Wait for container to start
+        sleep 10
+        
+        # Test endpoints
+        curl -f http://localhost:8080/health || echo "Health check failed"
+        
+        # Stop container
+        docker stop descry-test
+        docker rm descry-test

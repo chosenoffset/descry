@@ -1,0 +1,151 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    check-shadowing: true
+
+  golint:
+    min-confidence: 0
+
+  gocyclo:
+    min-complexity: 15
+
+  maligned:
+    suggest-new: true
+
+  dupl:
+    threshold: 100
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  lll:
+    line-length: 120
+
+  goimports:
+    local-prefixes: github.com/chosenoffset/descry
+
+  gocritic:
+    enabled-tags:
+      - performance
+      - style
+      - experimental
+    disabled-checks:
+      - wrapperFunc
+      - hugeParam
+
+  funlen:
+    lines: 100
+    statements: 50
+
+  gocognit:
+    min-complexity: 20
+
+  nestif:
+    min-complexity: 5
+
+  godot:
+    scope: declarations
+    capital: true
+
+linters:
+  enable:
+    - bodyclose
+    - deadcode
+    - depguard
+    - dogsled
+    - dupl
+    - errcheck
+    - exhaustive
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - golint
+    - gomnd
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacer
+    - lll
+    - maligned
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - rowserrcheck
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - whitespace
+    - gocognit
+    - nestif
+    - godot
+
+  disable:
+    - asciicheck
+    - gochecknoglobals
+    - godox
+    - testpackage
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gomnd
+        - funlen
+        - gocognit
+
+    - path: integration_test\.go
+      linters:
+        - gomnd
+        - funlen
+        - gocognit
+
+    - path: benchmark_test\.go
+      linters:
+        - gomnd
+        - funlen
+        - gocognit
+
+    - text: "weak cryptographic primitive"
+      linters:
+        - gosec
+
+    - text: "should have a package comment"
+      linters:
+        - golint
+
+  exclude:
+    - "Error return value of `.*\\.Close` is not checked"
+    - "should have comment or be unexported"
+    - "comment on exported method .* should be of the form"
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
