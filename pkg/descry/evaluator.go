@@ -624,6 +624,7 @@ func (e *Evaluator) evalUnitExpression(node *parser.UnitExpression) Object {
 
 func (e *Evaluator) getMetricValue(category, metric string) Object {
 	runtimeMetrics := e.engine.GetRuntimeMetrics()
+	httpStats := e.engine.GetHTTPMetrics()
 
 	switch category {
 	case "heap":
@@ -638,6 +639,8 @@ func (e *Evaluator) getMetricValue(category, metric string) Object {
 			return &Integer{Value: int64(runtimeMetrics.HeapInuse)}
 		case "released":
 			return &Integer{Value: int64(runtimeMetrics.HeapReleased)}
+		case "objects":
+			return &Integer{Value: int64(runtimeMetrics.HeapObjects)}
 		}
 	case "goroutines":
 		switch metric {
@@ -650,6 +653,25 @@ func (e *Evaluator) getMetricValue(category, metric string) Object {
 			return &Float{Value: float64(runtimeMetrics.PauseTotalNs) / 1000000} // Convert nanoseconds to ms
 		case "num":
 			return &Integer{Value: int64(runtimeMetrics.NumGC)}
+		case "cpu_fraction":
+			return &Float{Value: runtimeMetrics.GCCPUFraction}
+		}
+	case "http":
+		switch metric {
+		case "request_count":
+			return &Integer{Value: httpStats.RequestCount}
+		case "error_count":
+			return &Integer{Value: httpStats.ErrorCount}
+		case "error_rate":
+			return &Float{Value: httpStats.ErrorRate}
+		case "request_rate":
+			return &Float{Value: httpStats.RequestRate}
+		case "response_time":
+			return &Float{Value: float64(httpStats.AvgResponseTime) / 1000000} // Convert nanoseconds to ms
+		case "max_response_time":
+			return &Float{Value: float64(httpStats.MaxResponseTime) / 1000000} // Convert nanoseconds to ms
+		case "pending_requests":
+			return &Integer{Value: httpStats.PendingRequests}
 		}
 	}
 

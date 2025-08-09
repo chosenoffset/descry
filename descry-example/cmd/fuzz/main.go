@@ -3,83 +3,431 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
-	"path/filepath"
-	"plugin"
+	"sync"
 	"time"
-
-	"github.com/chosenoffset/descry/descry-example/internal/scenario"
 )
 
-func loadPlugins(path string) []scenario.Scenario {
-	var scenarios []scenario.Scenario
-	files, err := filepath.Glob(filepath.Join(path, "*.so"))
-	if err != nil {
-		log.Fatalf("Failed to scan plugins: %v", err)
-	}
-
-	for _, f := range files {
-		p, err := plugin.Open(f)
-		if err != nil {
-			log.Printf("Failed to load plugin %s: %v", f, err)
-			continue
-		}
-
-		sym, err := p.Lookup("ScenarioInstance")
-		if err != nil {
-			log.Printf("Failed to find symbol in %s: %v", f, err)
-			continue
-		}
-
-		sc, ok := sym.(scenario.Scenario)
-		if !ok {
-			log.Printf("Invalid type in %s", f)
-			continue
-		}
-
-		log.Printf("Loaded scenario plugin: %s", sc.Name())
-		scenarios = append(scenarios, sc)
-	}
-
-	return scenarios
+type LoadPattern struct {
+	Name        string
+	Description string
+	Execute     func(ctx context.Context, client *http.Client, baseURL string)
 }
+
+type AccountRequest struct {
+	ID      string  `json:"id"`
+	Balance float64 `json:"balance"`
+}
+
+type TransferRequest struct {
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Amount float64 `json:"amount"`
+}
+
+const maxAccounts = 1000
+
+var (
+	accountCounter = 0
+	accountMutex   sync.Mutex
+	createdAccounts = make([]string, 0, maxAccounts)
+)
 
 func main() {
 	client := &http.Client{Timeout: 5 * time.Second}
 	baseURL := "http://localhost:8080"
 	ctx := context.Background()
 
-	scenarios := loadPlugins("./plugins")
-	if len(scenarios) == 0 {
-		log.Fatal("No scenarios loaded. Exiting.")
+	// Define load patterns that stress different aspects of the system
+	patterns := []LoadPattern{
+		{
+			Name:        "Normal Operations",
+			Description: "Regular account operations with typical load",
+			Execute:     normalOperations,
+		},
+		{
+			Name:        "Account Creation Burst",
+			Description: "Rapid account creation to test memory allocation",
+			Execute:     accountCreationBurst,
+		},
+		{
+			Name:        "High Frequency Transfers",
+			Description: "Many concurrent transfers to test performance",
+			Execute:     highFrequencyTransfers,
+		},
+		{
+			Name:        "Large Transfer Amounts",
+			Description: "Transfers with large amounts to test precision",
+			Execute:     largeTransfers,
+		},
+		{
+			Name:        "Concurrent Balance Checks",
+			Description: "Many simultaneous balance queries",
+			Execute:     concurrentBalanceChecks,
+		},
+		{
+			Name:        "Error Generation",
+			Description: "Deliberately trigger error conditions",
+			Execute:     errorGeneration,
+		},
+		{
+			Name:        "Memory Pressure",
+			Description: "Operations designed to increase memory usage",
+			Execute:     memoryPressure,
+		},
 	}
 
 	rand.Seed(time.Now().UnixNano())
+	
+	// Pre-create some accounts for testing
+	log.Println("Pre-creating test accounts...")
+	for i := 0; i < 20; i++ {
+		createTestAccount(ctx, client, baseURL)
+	}
+	log.Printf("Created %d test accounts", len(createdAccounts))
 
+	log.Println("Starting load generation...")
+	log.Println("This will generate realistic load patterns to demonstrate Descry monitoring capabilities")
+	
+	// Run different load patterns in cycles
 	for {
-		if rand.Intn(10) < 8 {
-			sendRandomTransaction(ctx, client, baseURL)
-		} else {
-			sc := scenarios[rand.Intn(len(scenarios))]
-			log.Printf("Running scenario: %s", sc.Name())
-			sc.Run(ctx, client, baseURL)
-		}
-
-		time.Sleep(100 * time.Millisecond)
+		pattern := patterns[rand.Intn(len(patterns))]
+		log.Printf("Running pattern: %s - %s", pattern.Name, pattern.Description)
+		
+		// Run the pattern for a random duration
+		duration := time.Duration(rand.Intn(30)+10) * time.Second
+		timeout, cancel := context.WithTimeout(ctx, duration)
+		
+		pattern.Execute(timeout, client, baseURL)
+		cancel()
+		
+		// Brief pause between patterns
+		time.Sleep(time.Duration(rand.Intn(5)+2) * time.Second)
 	}
 }
 
-func sendRandomTransaction(ctx context.Context, client *http.Client, baseURL string) {
-	body := []byte(`{"txid": "tx-123", "amount": 100}`)
-	req, _ := http.NewRequestWithContext(ctx, "POST", baseURL+"/ledger", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+func createTestAccount(ctx context.Context, client *http.Client, baseURL string) {
+	accountMutex.Lock()
+	accountCounter++
+	accountID := fmt.Sprintf("account-%d", accountCounter)
+	accountMutex.Unlock()
+	
+	// Generate and validate balance
+	balance := float64(rand.Intn(10000) + 1000) // Random balance between 1000-11000
+	balance = math.Max(0, balance) // Ensure non-negative
+	if math.IsInf(balance, 0) || math.IsNaN(balance) {
+		balance = 1000 // Fallback value
+	}
+	
+	account := AccountRequest{
+		ID:      accountID,
+		Balance: balance,
+	}
+	
+	if createAccount(ctx, client, baseURL, account) {
+		accountMutex.Lock()
+		if len(createdAccounts) >= maxAccounts {
+			// Remove oldest 10% of accounts to prevent memory leak
+			removeCount := maxAccounts / 10
+			if removeCount < 1 {
+				removeCount = 1
+			}
+			copy(createdAccounts, createdAccounts[removeCount:])
+			createdAccounts = createdAccounts[:len(createdAccounts)-removeCount]
+		}
+		createdAccounts = append(createdAccounts, accountID)
+		accountMutex.Unlock()
+	}
+}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Normal transaction failed: %v", err)
+func normalOperations(ctx context.Context, client *http.Client, baseURL string) {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			switch rand.Intn(4) {
+			case 0:
+				createTestAccount(ctx, client, baseURL)
+			case 1:
+				performRandomTransfer(ctx, client, baseURL)
+			case 2, 3:
+				checkRandomBalance(ctx, client, baseURL)
+			}
+		}
+	}
+}
+
+func accountCreationBurst(ctx context.Context, client *http.Client, baseURL string) {
+	// Create many accounts rapidly to stress memory allocation
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			createTestAccount(ctx, client, baseURL)
+		}
+	}
+}
+
+func highFrequencyTransfers(ctx context.Context, client *http.Client, baseURL string) {
+	// Rapid transfers to test HTTP performance and response times
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			performRandomTransfer(ctx, client, baseURL)
+		}
+	}
+}
+
+func largeTransfers(ctx context.Context, client *http.Client, baseURL string) {
+	// Transfers with large amounts
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			performLargeTransfer(ctx, client, baseURL)
+		}
+	}
+}
+
+func concurrentBalanceChecks(ctx context.Context, client *http.Client, baseURL string) {
+	// Many concurrent balance checks to test goroutine management
+	for i := 0; i < 20; i++ {
+		go func() {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					checkRandomBalance(ctx, client, baseURL)
+				}
+			}
+		}()
+	}
+	
+	<-ctx.Done()
+}
+
+func errorGeneration(ctx context.Context, client *http.Client, baseURL string) {
+	// Deliberately generate errors to test error rate monitoring
+	ticker := time.NewTicker(300 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			switch rand.Intn(4) {
+			case 0:
+				// Try to create duplicate account
+				if len(createdAccounts) > 0 {
+					existing := createdAccounts[rand.Intn(len(createdAccounts))]
+					account := AccountRequest{ID: existing, Balance: 1000}
+					createAccount(ctx, client, baseURL, account)
+				}
+			case 1:
+				// Try to transfer from non-existent account
+				transfer := TransferRequest{
+					From:   "non-existent-account",
+					To:     "another-non-existent",
+					Amount: 100,
+				}
+				performTransfer(ctx, client, baseURL, transfer)
+			case 2:
+				// Check balance of non-existent account
+				checkBalance(ctx, client, baseURL, "non-existent-account")
+			case 3:
+				// Try insufficient funds transfer
+				performInsufficientFundsTransfer(ctx, client, baseURL)
+			}
+		}
+	}
+}
+
+func memoryPressure(ctx context.Context, client *http.Client, baseURL string) {
+	// Create operations that use more memory
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Create accounts with very long IDs and large amounts
+			accountMutex.Lock()
+			accountCounter++
+			longID := fmt.Sprintf("very-long-account-id-with-lots-of-data-%d-%s", 
+				accountCounter, randomString(50))
+			accountMutex.Unlock()
+			
+			account := AccountRequest{
+				ID:      longID,
+				Balance: float64(rand.Intn(1000000) + 100000),
+			}
+			createAccount(ctx, client, baseURL, account)
+		}
+	}
+}
+
+func performRandomTransfer(ctx context.Context, client *http.Client, baseURL string) {
+	if len(createdAccounts) < 2 {
 		return
 	}
-	resp.Body.Close()
+	
+	accountMutex.Lock()
+	fromIdx := rand.Intn(len(createdAccounts))
+	toIdx := rand.Intn(len(createdAccounts))
+	for toIdx == fromIdx {
+		toIdx = rand.Intn(len(createdAccounts))
+	}
+	from := createdAccounts[fromIdx]
+	to := createdAccounts[toIdx]
+	accountMutex.Unlock()
+	
+	transfer := TransferRequest{
+		From:   from,
+		To:     to,
+		Amount: float64(rand.Intn(500) + 1),
+	}
+	
+	performTransfer(ctx, client, baseURL, transfer)
+}
+
+func performLargeTransfer(ctx context.Context, client *http.Client, baseURL string) {
+	if len(createdAccounts) < 2 {
+		return
+	}
+	
+	accountMutex.Lock()
+	from := createdAccounts[rand.Intn(len(createdAccounts))]
+	to := createdAccounts[rand.Intn(len(createdAccounts))]
+	accountMutex.Unlock()
+	
+	transfer := TransferRequest{
+		From:   from,
+		To:     to,
+		Amount: float64(rand.Intn(10000) + 5000), // Large amounts
+	}
+	
+	performTransfer(ctx, client, baseURL, transfer)
+}
+
+func performInsufficientFundsTransfer(ctx context.Context, client *http.Client, baseURL string) {
+	if len(createdAccounts) < 2 {
+		return
+	}
+	
+	accountMutex.Lock()
+	from := createdAccounts[rand.Intn(len(createdAccounts))]
+	to := createdAccounts[rand.Intn(len(createdAccounts))]
+	accountMutex.Unlock()
+	
+	// Try to transfer an impossibly large amount
+	transfer := TransferRequest{
+		From:   from,
+		To:     to,
+		Amount: 1000000000, // Very large amount likely to cause insufficient funds
+	}
+	
+	performTransfer(ctx, client, baseURL, transfer)
+}
+
+func checkRandomBalance(ctx context.Context, client *http.Client, baseURL string) {
+	if len(createdAccounts) == 0 {
+		return
+	}
+	
+	accountMutex.Lock()
+	account := createdAccounts[rand.Intn(len(createdAccounts))]
+	accountMutex.Unlock()
+	
+	checkBalance(ctx, client, baseURL, account)
+}
+
+func createAccount(ctx context.Context, client *http.Client, baseURL string, account AccountRequest) bool {
+	data, err := json.Marshal(account)
+	if err != nil {
+		return false
+	}
+	
+	req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/account", bytes.NewReader(data))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	
+	return resp.StatusCode == http.StatusCreated
+}
+
+func performTransfer(ctx context.Context, client *http.Client, baseURL string, transfer TransferRequest) {
+	data, err := json.Marshal(transfer)
+	if err != nil {
+		return
+	}
+	
+	req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/transfer", bytes.NewReader(data))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+func checkBalance(ctx context.Context, client *http.Client, baseURL string, accountID string) {
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/balance?id="+accountID, nil)
+	if err != nil {
+		return
+	}
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+func randomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }

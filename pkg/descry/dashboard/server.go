@@ -403,17 +403,46 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		s.clientsMutex.Unlock()
 	}()
 	
-	// Keep connection alive
+	// Set connection timeouts and handlers
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+	
+	// Start a goroutine to read messages (required to detect client disconnections)
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					log.Printf("WebSocket read error: %v", err)
+				}
+				return
+			}
+		}
+	}()
+	
+	// Keep connection alive with ping messages
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	
 	for {
 		select {
 		case <-ticker.C:
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
+		case <-readDone:
+			// Client disconnected
+			return
 		case <-s.stop:
+			// Server shutdown
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			return
 		}
 	}

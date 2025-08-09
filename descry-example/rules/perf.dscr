@@ -1,0 +1,11 @@
+when http.response_time > 500ms {
+  alert("Slow response detected")
+}
+
+when http.error_rate > 10 {
+  alert("High error rate detected")
+}
+
+when http.pending_requests > 20 {
+  alert("High pending request count")
+}

@@ -1,0 +1,11 @@
+when heap.alloc > 100MB {
+  alert("High memory usage detected")
+}
+
+when heap.alloc > 500MB {
+  alert("Critical memory usage")
+}
+
+when goroutines.count > 1000 {
+  alert("High goroutine count")
+}

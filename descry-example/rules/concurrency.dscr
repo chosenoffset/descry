@@ -1,0 +1,11 @@
+when goroutines.count > 100 {
+  alert("Goroutine count is high")
+}
+
+when gc.cpu_fraction > 0.25 {
+  alert("High GC CPU usage")
+}
+
+when goroutines.count > 500 {
+  alert("Potential goroutine leak")
+}

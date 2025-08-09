@@ -2,6 +2,7 @@ package descry
 
 import (
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 type Engine struct {
 	runtimeCollector *metrics.RuntimeCollector
+	httpMetrics      *metrics.HTTPMetrics
 	rules            []*Rule
 	evaluator        *Evaluator
 	actionRegistry   *actions.ActionRegistry
@@ -33,6 +35,7 @@ type Rule struct {
 func NewEngine() *Engine {
 	engine := &Engine{
 		runtimeCollector: metrics.NewRuntimeCollector(1000, 100*time.Millisecond),
+		httpMetrics:      metrics.NewHTTPMetrics(1000),
 		rules:            make([]*Rule, 0),
 		actionRegistry:   actions.NewActionRegistry(),
 		dashboard:        dashboard.NewServer(9090),
@@ -133,6 +136,14 @@ func (e *Engine) GetRuntimeMetrics() metrics.RuntimeMetrics {
 	return e.runtimeCollector.GetCurrent()
 }
 
+func (e *Engine) GetHTTPMetrics() metrics.HTTPStats {
+	return e.httpMetrics.GetStats()
+}
+
+func (e *Engine) HTTPMiddleware() func(http.HandlerFunc) http.HandlerFunc {
+	return e.httpMetrics.Middleware
+}
+
 func (e *Engine) GetRules() []*Rule {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -197,19 +208,29 @@ func (e *Engine) sendMetricsToDashboard() {
 		return // Dashboard not available, skip sending metrics
 	}
 	
-	metrics := e.runtimeCollector.GetCurrent()
+	runtimeMetrics := e.runtimeCollector.GetCurrent()
+	httpStats := e.httpMetrics.GetStats()
 	
 	dashboardMetrics := map[string]interface{}{
-		"heap.alloc":       metrics.HeapAlloc,
-		"heap.sys":         metrics.HeapSys,
-		"heap.idle":        metrics.HeapIdle,
-		"heap.inuse":       metrics.HeapInuse,
-		"heap.released":    metrics.HeapReleased,
-		"heap.objects":     metrics.HeapObjects,
-		"goroutines.count": metrics.NumGoroutine,
-		"gc.num":           metrics.NumGC,
-		"gc.pause":         metrics.PauseTotalNs,
-		"gc.cpu_fraction":  metrics.GCCPUFraction,
+		// Runtime metrics
+		"heap.alloc":       runtimeMetrics.HeapAlloc,
+		"heap.sys":         runtimeMetrics.HeapSys,
+		"heap.idle":        runtimeMetrics.HeapIdle,
+		"heap.inuse":       runtimeMetrics.HeapInuse,
+		"heap.released":    runtimeMetrics.HeapReleased,
+		"heap.objects":     runtimeMetrics.HeapObjects,
+		"goroutines.count": runtimeMetrics.NumGoroutine,
+		"gc.num":           runtimeMetrics.NumGC,
+		"gc.pause":         runtimeMetrics.PauseTotalNs,
+		"gc.cpu_fraction":  runtimeMetrics.GCCPUFraction,
+		// HTTP metrics
+		"http.request_count":    httpStats.RequestCount,
+		"http.error_count":      httpStats.ErrorCount,
+		"http.error_rate":       httpStats.ErrorRate,
+		"http.request_rate":     httpStats.RequestRate,
+		"http.response_time":    httpStats.AvgResponseTime,
+		"http.max_response_time": httpStats.MaxResponseTime,
+		"http.pending_requests": httpStats.PendingRequests,
 	}
 	
 	e.dashboard.SendMetricUpdate(dashboardMetrics)
