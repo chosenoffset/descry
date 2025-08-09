@@ -72,14 +72,14 @@ func (rc *RuntimeCollector) Start() {
 
 func (rc *RuntimeCollector) Stop() {
 	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	
 	if !rc.running {
-		rc.mu.Unlock()
 		return
 	}
 	rc.running = false
-	rc.mu.Unlock()
-
 	close(rc.stopCh)
+	rc.stopCh = make(chan struct{}) // Recreate for potential restart
 }
 
 func (rc *RuntimeCollector) collectLoop() {
