@@ -1,0 +1,27 @@
+when heap.alloc > 10MB {
+  log("Development: Memory usage monitoring")
+}
+
+when http.request_count > 100 {
+  log("Development: Request count milestone reached")
+}
+
+when http.error_count > 5 {
+  alert("Development: Multiple errors detected")
+}
+
+when http.response_time > 100ms {
+  log("Development: Slow response detected")
+}
+
+when gc.num > 10 {
+  log("Development: GC activity detected")
+}
+
+when goroutines.count > 20 {
+  log("Development: Goroutine activity monitoring")
+}
+
+when heap.alloc > 5MB && trend("heap.alloc", 30) > 1MB {
+  log("Development: Rapid memory growth detected")
+}

@@ -80,6 +80,16 @@ func main() {
 			Description: "Operations designed to increase memory usage",
 			Execute:     memoryPressure,
 		},
+		{
+			Name:        "Sustained Load",
+			Description: "Consistent medium load to test stability",
+			Execute:     sustainedLoad,
+		},
+		{
+			Name:        "Spike Load",
+			Description: "Sudden bursts of activity to test scalability",
+			Execute:     spikeLoad,
+		},
 	}
 
 	rand.Seed(time.Now().UnixNano())
@@ -93,6 +103,10 @@ func main() {
 
 	log.Println("Starting load generation...")
 	log.Println("This will generate realistic load patterns to demonstrate Descry monitoring capabilities")
+	log.Printf("Available patterns: %d", len(patterns))
+	for i, pattern := range patterns {
+		log.Printf("  %d. %s - %s", i+1, pattern.Name, pattern.Description)
+	}
 	
 	// Run different load patterns in cycles
 	for {
@@ -213,8 +227,12 @@ func largeTransfers(ctx context.Context, client *http.Client, baseURL string) {
 
 func concurrentBalanceChecks(ctx context.Context, client *http.Client, baseURL string) {
 	// Many concurrent balance checks to test goroutine management
+	var wg sync.WaitGroup
+	
 	for i := 0; i < 20; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			ticker := time.NewTicker(100 * time.Millisecond)
 			defer ticker.Stop()
 			
@@ -229,7 +247,7 @@ func concurrentBalanceChecks(ctx context.Context, client *http.Client, baseURL s
 		}()
 	}
 	
-	<-ctx.Done()
+	wg.Wait()
 }
 
 func errorGeneration(ctx context.Context, client *http.Client, baseURL string) {
@@ -296,11 +314,12 @@ func memoryPressure(ctx context.Context, client *http.Client, baseURL string) {
 }
 
 func performRandomTransfer(ctx context.Context, client *http.Client, baseURL string) {
+	accountMutex.Lock()
 	if len(createdAccounts) < 2 {
+		accountMutex.Unlock()
 		return
 	}
 	
-	accountMutex.Lock()
 	fromIdx := rand.Intn(len(createdAccounts))
 	toIdx := rand.Intn(len(createdAccounts))
 	for toIdx == fromIdx {
@@ -320,11 +339,12 @@ func performRandomTransfer(ctx context.Context, client *http.Client, baseURL str
 }
 
 func performLargeTransfer(ctx context.Context, client *http.Client, baseURL string) {
+	accountMutex.Lock()
 	if len(createdAccounts) < 2 {
+		accountMutex.Unlock()
 		return
 	}
 	
-	accountMutex.Lock()
 	from := createdAccounts[rand.Intn(len(createdAccounts))]
 	to := createdAccounts[rand.Intn(len(createdAccounts))]
 	accountMutex.Unlock()
@@ -339,11 +359,12 @@ func performLargeTransfer(ctx context.Context, client *http.Client, baseURL stri
 }
 
 func performInsufficientFundsTransfer(ctx context.Context, client *http.Client, baseURL string) {
+	accountMutex.Lock()
 	if len(createdAccounts) < 2 {
+		accountMutex.Unlock()
 		return
 	}
 	
-	accountMutex.Lock()
 	from := createdAccounts[rand.Intn(len(createdAccounts))]
 	to := createdAccounts[rand.Intn(len(createdAccounts))]
 	accountMutex.Unlock()
@@ -359,11 +380,12 @@ func performInsufficientFundsTransfer(ctx context.Context, client *http.Client, 
 }
 
 func checkRandomBalance(ctx context.Context, client *http.Client, baseURL string) {
+	accountMutex.Lock()
 	if len(createdAccounts) == 0 {
+		accountMutex.Unlock()
 		return
 	}
 	
-	accountMutex.Lock()
 	account := createdAccounts[rand.Intn(len(createdAccounts))]
 	accountMutex.Unlock()
 	
@@ -421,6 +443,70 @@ func checkBalance(ctx context.Context, client *http.Client, baseURL string, acco
 		return
 	}
 	defer resp.Body.Close()
+}
+
+func sustainedLoad(ctx context.Context, client *http.Client, baseURL string) {
+	// Consistent medium load to test long-term stability
+	ticker := time.NewTicker(150 * time.Millisecond)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Mix of operations: 40% transfers, 30% balance checks, 20% account creation, 10% errors
+			switch rand.Intn(10) {
+			case 0, 1, 2, 3: // 40% transfers
+				performRandomTransfer(ctx, client, baseURL)
+			case 4, 5, 6: // 30% balance checks
+				checkRandomBalance(ctx, client, baseURL)
+			case 7, 8: // 20% account creation
+				createTestAccount(ctx, client, baseURL)
+			case 9: // 10% error generation
+				// Generate a single error
+				if len(createdAccounts) > 0 {
+					checkBalance(ctx, client, baseURL, "non-existent-account")
+				}
+			}
+		}
+	}
+}
+
+func spikeLoad(ctx context.Context, client *http.Client, baseURL string) {
+	// Sudden bursts of activity to test scalability and goroutine management
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Create a sudden spike of concurrent requests
+			concurrency := rand.Intn(50) + 20 // 20-70 concurrent requests
+			var wg sync.WaitGroup
+			
+			for i := 0; i < concurrency; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					switch rand.Intn(3) {
+					case 0:
+						performRandomTransfer(ctx, client, baseURL)
+					case 1:
+						checkRandomBalance(ctx, client, baseURL)
+					case 2:
+						createTestAccount(ctx, client, baseURL)
+					}
+				}()
+			}
+			
+			// Wait for all requests to complete
+			wg.Wait()
+			
+			// Pause between spikes
+			pauseDuration := time.Duration(rand.Intn(3000)+1000) * time.Millisecond
+			time.Sleep(pauseDuration)
+		}
+	}
 }
 
 func randomString(length int) string {

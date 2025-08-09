@@ -237,17 +237,19 @@ Descry is an embeddable rules engine for Go applications that provides runtime m
 
 **Session 4 Achievements**: Built complete web dashboard with real-time monitoring capabilities. Implemented WebSocket streaming for live metrics updates, time-series charts using Chart.js, rule trigger timeline, and REST API endpoints. Created integrated demo application showing rules engine with dashboard. The dashboard displays live Go runtime metrics (memory, goroutines, GC stats) and rule trigger events in real-time at http://localhost:9090.
 
+### Session 5: Example Application Integration ✅
+- [x] Integrate Descry into ledger server (descry-example/cmd/server/main.go)
+- [x] Create comprehensive sample rule files (memory.dscr, perf.dscr, concurrency.dscr, dev.dscr)
+- [x] Add HTTP middleware monitoring for automatic request/response tracking
+- [x] Update fuzzing client with enhanced load patterns (sustained load, spike load, memory pressure)
+
+**Session 5 Achievements**: Completed full integration of Descry into the example ledger application. Enhanced rule files with comprehensive monitoring scenarios covering memory leaks, performance degradation, concurrency issues, and development debugging. HTTP middleware automatically tracks all requests with detailed performance metrics. Enhanced fuzzing client with 9 different load patterns including sustained load, spike testing, and memory pressure scenarios. The integrated system now demonstrates realistic monitoring with live rule evaluation and alerting. Users can run the complete demo with `go run descry-example/cmd/server/main.go` and generate load with `go run descry-example/cmd/fuzz/main.go`.
+
 ### Session 4: Basic Dashboard ✅
 - [x] Create web server for dashboard
 - [x] Implement real-time metric display
 - [x] Add basic time-series graphing
 - [x] Create rule trigger timeline
-
-### Session 5: Example Application Integration
-- [ ] Integrate Descry into ledger server
-- [ ] Create sample rule files
-- [ ] Add HTTP middleware monitoring
-- [ ] Update fuzzing client for realistic load
 
 ### Session 6: Advanced Dashboard Features
 - [ ] Add playback/time-travel functionality

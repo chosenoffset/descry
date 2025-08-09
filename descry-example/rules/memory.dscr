@@ -1,11 +1,23 @@
-when heap.alloc > 100MB {
-  alert("High memory usage detected")
+when heap.alloc > 100MB && trend("heap.alloc", 300) > 0 {
+  alert("Potential memory leak detected")
 }
 
 when heap.alloc > 500MB {
-  alert("Critical memory usage")
+  alert("Critical memory usage detected")
 }
 
-when goroutines.count > 1000 {
-  alert("High goroutine count")
+when heap.alloc > 50MB && trend("heap.alloc", 60) > 10MB {
+  alert("Rapid memory allocation detected")
+}
+
+when gc.cpu_fraction > 0.1 {
+  alert("High GC CPU usage detected")
+}
+
+when heap.sys > 100MB && heap.alloc > 50MB && heap.sys > heap.alloc {
+  alert("High heap fragmentation detected")
+}
+
+when gc.pause > 10ms {
+  alert("Long GC pause detected")
 }
