@@ -90,6 +90,25 @@ func (r *ActionRegistry) ExecuteAction(action Action) error {
 	return nil
 }
 
+type DashboardHandler struct {
+	sendEvent func(eventType, message, rule string, data interface{})
+}
+
+func NewDashboardHandler(sendEvent func(eventType, message, rule string, data interface{})) *DashboardHandler {
+	return &DashboardHandler{sendEvent: sendEvent}
+}
+
+func (h *DashboardHandler) Handle(action Action) error {
+	if h.sendEvent != nil {
+		eventType := "alert"
+		if action.Type == LogAction {
+			eventType = "log"
+		}
+		h.sendEvent(eventType, action.Message, action.RuleName, nil)
+	}
+	return nil
+}
+
 func (r *ActionRegistry) CreateAction(actionType ActionType, message, ruleName string) Action {
 	return Action{
 		Type:      actionType,

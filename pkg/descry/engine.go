@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chosenoffset/descry/pkg/descry/actions"
+	"github.com/chosenoffset/descry/pkg/descry/dashboard"
 	"github.com/chosenoffset/descry/pkg/descry/metrics"
 	"github.com/chosenoffset/descry/pkg/descry/parser"
 )
@@ -15,6 +16,8 @@ type Engine struct {
 	rules            []*Rule
 	evaluator        *Evaluator
 	actionRegistry   *actions.ActionRegistry
+	dashboard        *dashboard.Server
+	dashboardRunning bool
 	running          bool
 	stopCh           chan struct{}
 	mutex            sync.RWMutex
@@ -32,6 +35,7 @@ func NewEngine() *Engine {
 		runtimeCollector: metrics.NewRuntimeCollector(1000, 100*time.Millisecond),
 		rules:            make([]*Rule, 0),
 		actionRegistry:   actions.NewActionRegistry(),
+		dashboard:        dashboard.NewServer(9090),
 		stopCh:           make(chan struct{}),
 	}
 	engine.evaluator = NewEvaluator(engine)
@@ -39,6 +43,25 @@ func NewEngine() *Engine {
 	// Register default action handlers
 	engine.actionRegistry.RegisterHandler(actions.AlertAction, &actions.ConsoleAlertHandler{})
 	engine.actionRegistry.RegisterHandler(actions.LogAction, actions.NewLogHandler(nil))
+	
+	// Register dashboard handlers
+	dashboardHandler := actions.NewDashboardHandler(engine.dashboard.SendEventUpdate)
+	engine.actionRegistry.RegisterHandler(actions.AlertAction, dashboardHandler)
+	engine.actionRegistry.RegisterHandler(actions.LogAction, dashboardHandler)
+	
+	// Set rules provider for dashboard
+	engine.dashboard.SetRulesProvider(func() interface{} {
+		rules := engine.GetRules()
+		ruleData := make([]map[string]interface{}, len(rules))
+		for i, rule := range rules {
+			ruleData[i] = map[string]interface{}{
+				"name":         rule.Name,
+				"source":       rule.Source,
+				"last_trigger": rule.LastTrigger,
+			}
+		}
+		return ruleData
+	})
 	
 	return engine
 }
@@ -53,6 +76,20 @@ func (e *Engine) Start() {
 
 	e.running = true
 	e.runtimeCollector.Start()
+	
+	// Start dashboard
+	go func() {
+		if err := e.dashboard.Start(); err != nil {
+			fmt.Printf("Dashboard failed to start: %v\n", err)
+			e.mutex.Lock()
+			e.dashboardRunning = false
+			e.mutex.Unlock()
+			return
+		}
+		e.mutex.Lock()
+		e.dashboardRunning = true
+		e.mutex.Unlock()
+	}()
 	
 	// Start rule evaluation loop
 	go e.evaluationLoop()
@@ -70,6 +107,7 @@ func (e *Engine) Stop() {
 	close(e.stopCh)
 	e.stopCh = make(chan struct{}) // Recreate channel for potential restart
 	e.runtimeCollector.Stop()
+	e.dashboard.Stop()
 }
 
 func (e *Engine) AddRule(name, source string) error {
@@ -109,6 +147,7 @@ func (e *Engine) evaluationLoop() {
 		select {
 		case <-ticker.C:
 			e.evaluateRules()
+			e.sendMetricsToDashboard()
 		case <-e.stopCh:
 			return
 		}
@@ -143,5 +182,39 @@ func (e *Engine) evaluateRule(rule *Rule) {
 		e.mutex.Lock()
 		rule.LastTrigger = time.Now()
 		e.mutex.Unlock()
+		
+		// Send event to dashboard
+		e.dashboard.SendEventUpdate("rule_triggered", "Rule condition met", rule.Name, nil)
 	}
+}
+
+func (e *Engine) sendMetricsToDashboard() {
+	e.mutex.RLock()
+	dashboardRunning := e.dashboardRunning
+	e.mutex.RUnlock()
+	
+	if !dashboardRunning {
+		return // Dashboard not available, skip sending metrics
+	}
+	
+	metrics := e.runtimeCollector.GetCurrent()
+	
+	dashboardMetrics := map[string]interface{}{
+		"heap.alloc":       metrics.HeapAlloc,
+		"heap.sys":         metrics.HeapSys,
+		"heap.idle":        metrics.HeapIdle,
+		"heap.inuse":       metrics.HeapInuse,
+		"heap.released":    metrics.HeapReleased,
+		"heap.objects":     metrics.HeapObjects,
+		"goroutines.count": metrics.NumGoroutine,
+		"gc.num":           metrics.NumGC,
+		"gc.pause":         metrics.PauseTotalNs,
+		"gc.cpu_fraction":  metrics.GCCPUFraction,
+	}
+	
+	e.dashboard.SendMetricUpdate(dashboardMetrics)
+}
+
+func (e *Engine) GetDashboard() *dashboard.Server {
+	return e.dashboard
 }
