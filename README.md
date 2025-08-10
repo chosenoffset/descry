@@ -273,12 +273,38 @@ go test ./...
 4. **Alert Manager**: Manage alert lifecycle with acknowledgment, resolution, and notes
 5. **Correlation Analysis**: Analyze relationships between metrics with scatter plots and anomaly detection
 
+## 💼 Example Application
+
+The [`descry-example/`](descry-example/) directory contains a complete **financial ledger application** that demonstrates real-world Descry integration:
+
+### What's Included
+- **HTTP API Server**: RESTful endpoints for account management and transfers
+- **Realistic Business Logic**: Multi-account ledger with balance tracking and transaction history
+- **Production Integration**: HTTP middleware, custom metrics, and comprehensive rule sets
+- **Load Testing**: Realistic traffic patterns with memory pressure and error scenarios
+- **Rule Libraries**: Pre-configured monitoring rules for memory, performance, and concurrency
+
+### API Endpoints
+- `POST /account` - Create new account with initial balance
+- `GET /balance?id=<account_id>` - Query account balance  
+- `POST /transfer` - Transfer funds between accounts
+- `GET /descry/metrics` - Current monitoring metrics
+- `GET /descry/rules` - Active monitoring rules
+
+### Monitoring Rules
+- **Memory Management**: `rules/memory.dscr` - Leak detection and GC pressure monitoring
+- **Performance**: `rules/perf.dscr` - Response time and error rate tracking  
+- **Concurrency**: `rules/concurrency.dscr` - Goroutine leak and contention detection
+- **Development**: `rules/dev.dscr` - Debugging and development-specific rules
+
+This example demonstrates how to integrate Descry into a real application with minimal overhead while gaining comprehensive observability.
+
 ## 📖 Documentation
 
 - **[Getting Started](docs/getting-started.md)** - Detailed setup and usage guide
 - **[DSL Reference](docs/dsl-reference.md)** - Complete language documentation
 - **[API Documentation](docs/api.md)** - Go package API reference
-- **[Examples](examples/)** - Real-world integration examples
+- **[Complete Example Application](descry-example/)** - Full financial ledger demo with realistic monitoring scenarios
 
 ## 🔗 Related Projects
 

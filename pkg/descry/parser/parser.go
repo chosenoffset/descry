@@ -117,9 +117,8 @@ func (p *Parser) parseStatement() Statement {
 func (p *Parser) parseWhenStatement() *WhenStatement {
 	stmt := &WhenStatement{Token: p.curToken}
 
-	if !p.expectPeek(IDENT) {
-		return nil
-	}
+	// Move to the next token to start parsing the condition
+	p.nextToken()
 
 	// Parse the condition expression
 	stmt.Condition = p.parseExpression(LOWEST)

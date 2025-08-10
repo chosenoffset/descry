@@ -48,7 +48,9 @@ package descry
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -80,6 +82,21 @@ type Engine struct {
 	// Sandboxing
 	customMetrics    map[string]float64
 	metricsMutex     sync.RWMutex
+	
+	// Event history storage
+	eventHistory     []EventRecord
+	eventMutex       sync.RWMutex
+	maxEventHistory  int
+}
+
+// EventRecord represents a historical event from rule triggers or actions
+type EventRecord struct {
+	ID        string                 `json:"id"`
+	Type      string                 `json:"type"`      // "alert", "log", "rule_trigger"
+	RuleName  string                 `json:"rule_name"`
+	Message   string                 `json:"message"`
+	Timestamp time.Time              `json:"timestamp"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 // Rule represents a compiled monitoring rule with its parsed AST
@@ -119,21 +136,44 @@ func DefaultResourceLimits() *ResourceLimits {
 	}
 }
 
+// getAvailablePort returns an available port for testing or 0 if none found
+func getAvailablePort() int {
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	return port
+}
+
 // NewEngine creates a new Descry monitoring engine with default configuration.
 // The engine includes automatic Go runtime metric collection, HTTP monitoring
 // middleware, and a web dashboard server on port 9090.
 //
 // The engine is not started by default - call Start() to begin monitoring.
 func NewEngine() *Engine {
+	return NewEngineWithPort(9090)
+}
+
+// NewEngineWithPort creates a new Descry monitoring engine with custom dashboard port.
+// This is primarily used for testing to avoid port conflicts.
+//
+// Example:
+//     engine := descry.NewEngineWithPort(8080)
+//     engine.Start()
+func NewEngineWithPort(dashboardPort int) *Engine {
 	engine := &Engine{
 		runtimeCollector: metrics.NewRuntimeCollector(1000, 100*time.Millisecond),
 		httpMetrics:      metrics.NewHTTPMetrics(1000),
 		rules:            make([]*Rule, 0),
 		actionRegistry:   actions.NewActionRegistry(),
-		dashboard:        dashboard.NewServer(9090),
+		dashboard:        dashboard.NewServer(dashboardPort),
 		stopCh:           make(chan struct{}),
 		limits:           DefaultResourceLimits(),
 		customMetrics:    make(map[string]float64),
+		eventHistory:     make([]EventRecord, 0),
+		maxEventHistory:  1000, // Store up to 1000 events
 	}
 	
 	// Enable runtime memory limit enforcement
@@ -147,7 +187,22 @@ func NewEngine() *Engine {
 	
 	// Register dashboard handlers
 	dashboardHandler := actions.NewDashboardHandler(engine.dashboard.SendEventUpdate)
+	
+	// Create event recording wrappers for actions
+	alertWrapper := &eventRecordingHandler{
+		engine: engine,
+		actionType: "alert",
+		wrapped: &actions.ConsoleAlertHandler{},
+	}
+	logWrapper := &eventRecordingHandler{
+		engine: engine,
+		actionType: "log",
+		wrapped: actions.NewLogHandler(nil),
+	}
+	
+	engine.actionRegistry.RegisterHandler(actions.AlertAction, alertWrapper)
 	engine.actionRegistry.RegisterHandler(actions.AlertAction, dashboardHandler)
+	engine.actionRegistry.RegisterHandler(actions.LogAction, logWrapper)
 	engine.actionRegistry.RegisterHandler(actions.LogAction, dashboardHandler)
 	
 	// Set rules provider for dashboard
@@ -493,6 +548,14 @@ func (e *Engine) handleEvaluationResult(rule *Rule, result interface{}, tracker 
 			memStats := tracker.GetMemoryStats()
 			cpuStats := tracker.GetCPUStats()
 			
+			// Record event in history
+			e.RecordEvent("rule_trigger", rule.Name, "Rule condition met", map[string]interface{}{
+				"memory_current": memStats.CurrentAlloc,
+				"memory_initial": memStats.InitialAlloc,
+				"cpu_time_used":  cpuStats.CPUTimeUsed.Seconds(),
+				"wall_time":      cpuStats.WallTimeUsed.Seconds(),
+			})
+			
 			e.logRuleTrigger(rule.Name, memStats, cpuStats)
 		}
 	}
@@ -565,4 +628,82 @@ func (e *Engine) sendMetricsToDashboard() {
 
 func (e *Engine) GetDashboard() *dashboard.Server {
 	return e.dashboard
+}
+
+// generateEventID creates a simple unique ID for events
+func generateEventID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return fmt.Sprintf("event-%x", b)
+}
+
+// RecordEvent adds an event to the history with automatic ID generation
+func (e *Engine) RecordEvent(eventType, ruleName, message string, data map[string]interface{}) {
+	e.eventMutex.Lock()
+	defer e.eventMutex.Unlock()
+	
+	event := EventRecord{
+		ID:        generateEventID(),
+		Type:      eventType,
+		RuleName:  ruleName,
+		Message:   message,
+		Timestamp: time.Now(),
+		Data:      data,
+	}
+	
+	// Add to history
+	e.eventHistory = append(e.eventHistory, event)
+	
+	// Maintain max history size (circular buffer behavior)
+	if len(e.eventHistory) > e.maxEventHistory {
+		e.eventHistory = e.eventHistory[1:] // Remove oldest event
+	}
+}
+
+// GetEventHistory returns recent events with optional filtering
+func (e *Engine) GetEventHistory(limit int, eventType string) []EventRecord {
+	e.eventMutex.RLock()
+	defer e.eventMutex.RUnlock()
+	
+	var filtered []EventRecord
+	
+	// Filter by type if specified
+	if eventType != "" {
+		for _, event := range e.eventHistory {
+			if event.Type == eventType {
+				filtered = append(filtered, event)
+			}
+		}
+	} else {
+		filtered = make([]EventRecord, len(e.eventHistory))
+		copy(filtered, e.eventHistory)
+	}
+	
+	// Apply limit (get most recent events)
+	if limit > 0 && len(filtered) > limit {
+		filtered = filtered[len(filtered)-limit:]
+	}
+	
+	// Reverse to get newest first
+	for i := len(filtered)/2 - 1; i >= 0; i-- {
+		opp := len(filtered) - 1 - i
+		filtered[i], filtered[opp] = filtered[opp], filtered[i]
+	}
+	
+	return filtered
+}
+
+// eventRecordingHandler wraps action handlers to record events in history
+type eventRecordingHandler struct {
+	engine     *Engine
+	actionType string
+	wrapped    actions.ActionHandler
+}
+
+func (h *eventRecordingHandler) Handle(action actions.Action) error {
+	// Record the event in history
+	h.engine.RecordEvent(h.actionType, action.RuleName, action.Message, nil)
+	
+	// Delegate to wrapped handler
+	return h.wrapped.Handle(action)
 }

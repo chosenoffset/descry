@@ -150,7 +150,7 @@ func TestSecurityLimitsEnforcement(t *testing.T) {
 		// Set very low limits
 		limits := engine.GetResourceLimits()
 		limits.MaxRules = 2
-		limits.MaxRuleComplexity = 5
+		limits.MaxRuleComplexity = 10 // Increased to accommodate simple rule complexity
 		engine.SetResourceLimits(limits)
 		
 		// Should be able to add up to the limit

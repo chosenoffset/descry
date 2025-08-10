@@ -1,3 +1,26 @@
+// Package main provides a comprehensive load testing client for the Descry example application.
+// It generates realistic traffic patterns to demonstrate monitoring capabilities under various conditions.
+//
+// The fuzzing client implements 9 different load scenarios:
+//   1. Normal Operations: Regular account operations with typical load
+//   2. Sustained Load: Continuous high-volume operations
+//   3. Spike Load: Sudden traffic bursts to test response under pressure
+//   4. Memory Pressure: Operations that create temporary memory allocation spikes
+//   5. High Error Rate: Mix of valid and invalid operations
+//   6. Concurrent Transfers: Heavy concurrent transfer operations
+//   7. Large Payloads: Operations with oversized request bodies
+//   8. Rapid Fire: Very high-frequency small operations
+//   9. Mixed Workload: Combination of all patterns
+//
+// Each scenario is designed to trigger different types of monitoring rules
+// and demonstrate the effectiveness of Descry's rule-based alerting system.
+//
+// Usage:
+//   go run descry-example/cmd/fuzz/main.go
+//
+// The client will run all scenarios sequentially, each for 30 seconds,
+// generating realistic load patterns that stress-test the monitored application.
+// Monitor the results using the Descry dashboard at http://localhost:9090
 package main
 
 import (

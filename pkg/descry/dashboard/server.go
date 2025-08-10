@@ -56,6 +56,8 @@ type Server struct {
 	metrics        chan MetricUpdate
 	events         chan EventUpdate
 	stop           chan struct{}
+	stopped        bool
+	stopMutex      sync.Mutex
 	recentMetrics  MetricUpdate
 	eventBuffer    []EventUpdate
 	eventIndex     int
@@ -199,7 +201,16 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
+	s.stopMutex.Lock()
+	defer s.stopMutex.Unlock()
+	
+	if s.stopped {
+		return nil // Already stopped
+	}
+	
+	s.stopped = true
 	close(s.stop)
+	
 	if s.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

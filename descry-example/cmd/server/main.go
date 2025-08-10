@@ -1,3 +1,28 @@
+// Package main provides the Descry example application - a financial ledger system
+// that demonstrates real-world integration of Descry monitoring capabilities.
+//
+// This application showcases:
+//   - Automatic HTTP request monitoring via middleware
+//   - Custom business metric integration (account balances, transaction volumes)
+//   - Rule-based monitoring with realistic thresholds
+//   - Dashboard integration for real-time visualization
+//   - Production-ready error handling and logging
+//
+// The server runs on :8080 with the following API endpoints:
+//   - POST /account: Create new account with initial balance
+//   - GET /balance?id=<account_id>: Get account balance
+//   - POST /transfer: Transfer funds between accounts
+//   - GET /descry/metrics: Current monitoring metrics
+//   - GET /descry/rules: Active monitoring rules
+//   - GET /descry/events: Recent rule triggers and alerts
+//
+// The Descry dashboard is available at http://localhost:9090
+//
+// Usage:
+//   go run descry-example/cmd/server/main.go
+//
+// The server will load monitoring rules from ./rules/*.dscr files and begin
+// monitoring application performance and business metrics automatically.
 package main
 
 import (
@@ -7,6 +32,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -167,7 +193,7 @@ func handleDescryRules(engine *descry.Engine) http.HandlerFunc {
 	}
 }
 
-// handleDescryEvents placeholder for recent rule triggers and alerts
+// handleDescryEvents returns recent rule triggers and alerts
 func handleDescryEvents(engine *descry.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -175,9 +201,31 @@ func handleDescryEvents(engine *descry.Engine) http.HandlerFunc {
 			return
 		}
 		
+		// Parse query parameters
+		query := r.URL.Query()
+		limit := 50 // default limit
+		if limitStr := query.Get("limit"); limitStr != "" {
+			if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+				if limit > 500 { // max limit
+					limit = 500
+				}
+			}
+		}
+		
+		eventType := query.Get("type") // optional filter by type
+		
+		// Get event history from engine
+		events := engine.GetEventHistory(limit, eventType)
+		
 		response := map[string]interface{}{
-			"events":  []interface{}{},
-			"message": "Event history not implemented yet",
+			"events":      events,
+			"total_count": len(events),
+			"limit":       limit,
+		}
+		
+		if eventType != "" {
+			response["filtered_by"] = eventType
 		}
 		
 		w.Header().Set("Content-Type", "application/json")

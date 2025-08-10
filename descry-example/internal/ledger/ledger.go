@@ -1,3 +1,18 @@
+// Package ledger provides a simple financial ledger system for the Descry example application.
+// It implements basic account management and transfer operations with thread-safe access
+// to demonstrate real-world business logic integration with monitoring.
+//
+// The ledger maintains account balances in-memory and provides HTTP handlers for:
+//   - Account creation with initial balance
+//   - Balance queries by account ID
+//   - Fund transfers between accounts with validation
+//
+// All operations are thread-safe and designed to work naturally with Descry's
+// HTTP monitoring middleware to collect performance metrics automatically.
+//
+// This package demonstrates how business applications can integrate with Descry
+// monitoring without requiring significant code changes - just add the middleware
+// and define monitoring rules for the behaviors you want to track.
 package ledger
 
 import (
@@ -7,6 +22,7 @@ import (
 	"sync"
 )
 
+// Ledger manages account balances and provides thread-safe operations
 type Ledger struct {
 	mu       sync.RWMutex
 	accounts map[string]float64
