@@ -71,6 +71,8 @@ type Server struct {
 	// Alert management
 	alerts            []Alert
 	alertsByStatus    map[AlertStatus][]Alert
+	// Debug logging control
+	debugEnabled      bool
 }
 
 // MetricUpdate represents a timestamped collection of metrics
@@ -158,6 +160,7 @@ func NewServer(port int) *Server {
 		maxHistorySize:    1000, // Store up to 1000 historical entries
 		alerts:            make([]Alert, 0),
 		alertsByStatus:    make(map[AlertStatus][]Alert),
+		debugEnabled:      false, // Debug logging disabled by default
 	}
 }
 
@@ -297,6 +300,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 <head>
     <title>Descry Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
         .header { background: #2c3e50; color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
@@ -645,8 +649,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
     </div>
 
     <script>
-        // WebSocket connection
-        const ws = new WebSocket('ws://localhost:9090/ws');
+        // WebSocket connection - use dynamic host detection
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(protocol + '//' + location.host + '/ws');
         
         // Chart configurations
         const chartConfig = {
@@ -758,8 +763,30 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             }
         };
         
-        function updateMetrics(metrics) {
+        /**
+         * Updates the live monitoring dashboard with new metrics data
+         * 
+         * Expected JSON structure for metricsData (MetricUpdate):
+         * {
+         *   "timestamp": "2024-01-01T10:00:00Z",
+         *   "metrics": {
+         *     "heap.alloc": 104857600,          // bytes
+         *     "heap.sys": 134217728,            // bytes  
+         *     "goroutines.count": 42,           // count
+         *     "gc.pause": 1500000,              // nanoseconds
+         *     "http.response_time": 25.5,       // milliseconds
+         *     "http.request_rate": 150.2,       // requests/second
+         *     "http.error_rate": 0.02           // percentage (0-1)
+         *   }
+         * }
+         * 
+         * @param {Object} metricsData - Metrics update object containing timestamp and metrics
+         * @param {string} metricsData.timestamp - ISO timestamp string
+         * @param {Object} metricsData.metrics - Key-value pairs of metric names to values
+         */
+        function updateMetrics(metricsData) {
             const timestamp = new Date();
+            const metrics = metricsData.metrics; // Extract metrics from MetricUpdate structure
             
             // Update memory
             if (metrics['heap.alloc'] !== undefined) {
@@ -782,6 +809,12 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             }
         }
         
+        /**
+         * Adds a new data point to a Chart.js chart and maintains a sliding window
+         * @param {Chart} chart - Chart.js chart instance
+         * @param {Date} timestamp - Timestamp for the x-axis
+         * @param {number} value - Value for the y-axis
+         */
         function addDataPoint(chart, timestamp, value) {
             chart.data.datasets[0].data.push({ x: timestamp, y: value });
             
@@ -793,6 +826,28 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             chart.update('none');
         }
         
+        /**
+         * Adds a new event to the live events timeline
+         * 
+         * Expected JSON structure for event (EventUpdate):
+         * {
+         *   "timestamp": "2024-01-01T10:00:00Z",
+         *   "type": "rule_triggered",              // "alert", "log", "rule_trigger"
+         *   "message": "High memory usage: 250MB",
+         *   "rule": "memory_monitor",
+         *   "data": {                              // optional additional data
+         *     "threshold": 200000000,
+         *     "current_value": 262144000
+         *   }
+         * }
+         * 
+         * @param {Object} event - Event data object
+         * @param {string} event.timestamp - ISO timestamp string
+         * @param {string} event.type - Event type (e.g., "rule_triggered", "alert")
+         * @param {string} event.message - Event message
+         * @param {string} event.rule - Rule name that generated the event
+         * @param {Object} [event.data] - Optional additional event data
+         */
         function addEvent(event) {
             const eventsList = document.getElementById('events-list');
             const eventDiv = document.createElement('div');
@@ -818,7 +873,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             console.log('Disconnected from Descry dashboard');
         };
         
-        // Tab switching
+        /**
+         * Switches between dashboard tabs (Live, Time Travel, Rule Editor, etc.)
+         * @param {string} tabName - Name of the tab to display
+         */
         function showTab(tabName) {
             // Hide all tab content
             document.querySelectorAll('.tab-content').forEach(content => {
@@ -837,7 +895,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             event.target.classList.add('active');
         }
         
-        // Playback functions
+        /**
+         * Updates playback charts with historical metrics during time-travel debugging
+         * @param {Object} metrics - Historical metrics data
+         * @param {string} metrics.timestamp - ISO timestamp string
+         */
         function updatePlaybackMetrics(metrics) {
             const timestamp = new Date(metrics.timestamp);
             
@@ -879,6 +941,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             }
         }
         
+        /**
+         * Initiates time-travel playback with specified time range and speed
+         */
         function startPlayback() {
             const fromInput = document.getElementById('playback-from');
             const toInput = document.getElementById('playback-to');
@@ -976,7 +1041,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             loadAvailableMetrics();
         };
         
-        // Rule editor functions
+        /**
+         * Validates rule syntax and displays validation results
+         */
         function validateRule() {
             const name = document.getElementById('rule-name').value;
             const code = document.getElementById('rule-editor').value;
@@ -1011,6 +1078,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
             });
         }
         
+        /**
+         * Saves the current rule to the monitoring engine
+         */
         function saveRule() {
             const name = document.getElementById('rule-name').value;
             const code = document.getElementById('rule-editor').value;
@@ -1625,6 +1695,17 @@ func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) SetRulesProvider(getRules func() interface{}) {
 	s.getRules = getRules
+}
+
+// GetPort returns the port number the dashboard server is configured to use
+func (s *Server) GetPort() int {
+	return s.port
+}
+
+// SetDebugEnabled controls whether debug logging is enabled for WebSocket connections
+// and metrics broadcasting. Disabled by default to prevent log spam in production.
+func (s *Server) SetDebugEnabled(enabled bool) {
+	s.debugEnabled = enabled
 }
 
 func (s *Server) handleHistoricalMetrics(w http.ResponseWriter, r *http.Request) {
@@ -2522,20 +2603,35 @@ func detectAnomalies(points []ScatterPoint, expectedCorrelation float64) []Anoma
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Debug logging for WebSocket connections
+	if s.debugEnabled {
+		log.Printf("WebSocket connection attempt from: %s", r.RemoteAddr)
+		log.Printf("Origin header: %s", r.Header.Get("Origin"))
+		log.Printf("User-Agent: %s", r.Header.Get("User-Agent"))
+	}
+	
 	// Check client limit before upgrading
 	s.clientsMutex.RLock()
 	clientCount := len(s.clients)
 	s.clientsMutex.RUnlock()
 	
 	if clientCount >= s.maxClients {
+		if s.debugEnabled {
+			log.Printf("WebSocket rejected: Maximum clients reached (%d)", s.maxClients)
+		}
 		http.Error(w, "Maximum clients reached", http.StatusServiceUnavailable)
 		return
 	}
 	
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade error: %v", err)
+		if s.debugEnabled {
+			log.Printf("WebSocket upgrade error: %v", err)
+		}
 		return
+	}
+	if s.debugEnabled {
+		log.Printf("WebSocket connected successfully from %s", r.RemoteAddr)
 	}
 	defer conn.Close()
 	
@@ -2564,7 +2660,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("WebSocket read error: %v", err)
+					if s.debugEnabled {
+						log.Printf("WebSocket read error: %v", err)
+					}
 				}
 				return
 			}
@@ -2608,6 +2706,11 @@ func (s *Server) broadcast() {
 				s.historicalMetrics = s.historicalMetrics[:s.maxHistorySize]
 			}
 			s.mutex.Unlock()
+			
+			// Debug logging for metrics broadcast
+			if s.debugEnabled {
+				log.Printf("Broadcasting metrics update with %d data points", len(metric.Metrics))
+			}
 			
 			s.broadcastMessage(map[string]interface{}{
 				"type": "metrics",
@@ -2656,7 +2759,9 @@ func (s *Server) broadcastMessage(message interface{}) {
 	
 	data, err := json.Marshal(message)
 	if err != nil {
-		log.Printf("Error marshaling message: %v", err)
+		if s.debugEnabled {
+			log.Printf("Error marshaling message: %v", err)
+		}
 		return
 	}
 	

@@ -72,6 +72,9 @@ type Engine struct {
 	actionRegistry   *actions.ActionRegistry
 	dashboard        *dashboard.Server
 	dashboardRunning bool
+	dashboardConnected bool
+	dashboardStartTime time.Time
+	lastMetricsSent  time.Time
 	running          bool
 	stopCh           chan struct{}
 	mutex            sync.RWMutex
@@ -239,19 +242,8 @@ func (e *Engine) Start() {
 	e.running = true
 	e.runtimeCollector.Start()
 	
-	// Start dashboard
-	go func() {
-		if err := e.dashboard.Start(); err != nil {
-			fmt.Printf("Dashboard failed to start: %v\n", err)
-			e.mutex.Lock()
-			e.dashboardRunning = false
-			e.mutex.Unlock()
-			return
-		}
-		e.mutex.Lock()
-		e.dashboardRunning = true
-		e.mutex.Unlock()
-	}()
+	// Start dashboard with enhanced error handling
+	go e.startDashboard()
 	
 	// Start rule evaluation loop
 	go e.evaluationLoop()
@@ -389,6 +381,35 @@ func (e *Engine) GetResourceLimits() *ResourceLimits {
 }
 
 // Legacy countASTNodes function removed - now using efficient NodeCounter interface
+
+// startDashboard starts the dashboard server with enhanced error handling
+func (e *Engine) startDashboard() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("DASHBOARD [startup] Panic during dashboard startup: %v\n", r)
+			e.mutex.Lock()
+			e.dashboardRunning = false
+			e.dashboardConnected = false
+			e.mutex.Unlock()
+		}
+	}()
+	
+	e.mutex.Lock()
+	e.dashboardRunning = true
+	e.dashboardStartTime = time.Now()
+	e.mutex.Unlock()
+	
+	fmt.Printf("DASHBOARD [startup] Starting Descry dashboard on port %d\n", e.dashboard.GetPort())
+	
+	if err := e.dashboard.Start(); err != nil {
+		fmt.Printf("DASHBOARD [startup] Failed to start dashboard server: %v\n", err)
+		e.mutex.Lock()
+		e.dashboardRunning = false
+		e.dashboardConnected = false
+		e.mutex.Unlock()
+		return
+	}
+}
 
 // StartDashboard starts the dashboard server (uses configured port)
 func (e *Engine) StartDashboard() error {
@@ -623,7 +644,21 @@ func (e *Engine) sendMetricsToDashboard() {
 		"http.pending_requests": httpStats.PendingRequests,
 	}
 	
-	e.dashboard.SendMetricUpdate(dashboardMetrics)
+	// Send metrics to dashboard with error handling
+	if err := e.dashboard.SendMetricUpdate(dashboardMetrics); err != nil {
+		e.mutex.Lock()
+		e.dashboardConnected = false
+		e.mutex.Unlock()
+		// Log error but don't halt execution
+		fmt.Printf("DASHBOARD [metrics] Failed to send metrics to dashboard: %v\n", err)
+		return
+	}
+	
+	// Track successful sends
+	e.mutex.Lock()
+	e.dashboardConnected = true
+	e.lastMetricsSent = time.Now()
+	e.mutex.Unlock()
 }
 
 func (e *Engine) GetDashboard() *dashboard.Server {
@@ -706,4 +741,18 @@ func (h *eventRecordingHandler) Handle(action actions.Action) error {
 	
 	// Delegate to wrapped handler
 	return h.wrapped.Handle(action)
+}
+
+// GetDashboardStatus returns dashboard health and connection information
+func (e *Engine) GetDashboardStatus() map[string]interface{} {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+	
+	return map[string]interface{}{
+		"running":           e.dashboardRunning,
+		"connected":         e.dashboardConnected,
+		"start_time":        e.dashboardStartTime,
+		"last_metrics_sent": e.lastMetricsSent,
+		"uptime_seconds":    time.Since(e.dashboardStartTime).Seconds(),
+	}
 }

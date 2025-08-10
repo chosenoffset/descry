@@ -15,6 +15,7 @@
 //   - GET /descry/metrics: Current monitoring metrics
 //   - GET /descry/rules: Active monitoring rules
 //   - GET /descry/events: Recent rule triggers and alerts
+//   - GET /descry/status: Dashboard connection and health status
 //
 // The Descry dashboard is available at http://localhost:9090
 //
@@ -69,6 +70,7 @@ func main() {
 	mux.HandleFunc("/descry/metrics", handleDescryMetrics(engine))
 	mux.HandleFunc("/descry/rules", handleDescryRules(engine))
 	mux.HandleFunc("/descry/events", handleDescryEvents(engine))
+	mux.HandleFunc("/descry/status", handleDescryStatus(engine))
 	
 	server := &http.Server{
 		Addr:         ":8080",
@@ -232,6 +234,34 @@ func handleDescryEvents(engine *descry.Engine) http.HandlerFunc {
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			http.Error(w, "failed to encode events", http.StatusInternalServerError)
 			log.Printf("Error encoding events: %v", err)
+		}
+	}
+}
+
+// handleDescryStatus provides dashboard health and connection status
+func handleDescryStatus(engine *descry.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		// Validate engine is properly initialized
+		if engine == nil {
+			http.Error(w, "engine not initialized", http.StatusInternalServerError)
+			log.Printf("Error: engine is nil in status handler")
+			return
+		}
+		
+		status := engine.GetDashboardStatus()
+		
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"dashboard": status,
+			"timestamp": time.Now(),
+		}); err != nil {
+			http.Error(w, "failed to encode status", http.StatusInternalServerError)
+			log.Printf("Error encoding dashboard status: %v", err)
 		}
 	}
 }
