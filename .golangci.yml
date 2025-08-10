@@ -1,3 +1,5 @@
+version: 2
+
 run:
   timeout: 5m
   issues-exit-code: 1
@@ -16,14 +18,8 @@ linters-settings:
   govet:
     check-shadowing: true
 
-  golint:
-    min-confidence: 0
-
   gocyclo:
     min-complexity: 15
-
-  maligned:
-    suggest-new: true
 
   dupl:
     threshold: 100
@@ -67,7 +63,6 @@ linters-settings:
 linters:
   enable:
     - bodyclose
-    - deadcode
     - depguard
     - dogsled
     - dupl
@@ -78,31 +73,21 @@ linters:
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
-    - golint
-    - gomnd
-    - goprintffuncname
+    - revive
+    - mnd
     - gosec
-    - gosimple
     - govet
     - ineffassign
-    - interfacer
     - lll
-    - maligned
     - misspell
     - nakedret
     - noctx
     - nolintlint
     - rowserrcheck
     - staticcheck
-    - structcheck
-    - stylecheck
-    - typecheck
     - unconvert
     - unparam
     - unused
-    - varcheck
     - whitespace
     - gocognit
     - nestif
@@ -137,10 +122,6 @@ issues:
     - text: "weak cryptographic primitive"
       linters:
         - gosec
-
-    - text: "should have a package comment"
-      linters:
-        - golint
 
   exclude:
     - "Error return value of `.*\\.Close` is not checked"
