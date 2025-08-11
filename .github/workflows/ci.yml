@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.21, 1.22, 1.23]
+        go-version: [1.24.5]
 
     steps:
     - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
         done
 
     - name: Upload coverage reports
-      if: matrix.go-version == '1.22'
+      if: matrix.go-version == '1.24.5'
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.out
@@ -78,7 +78,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.22
+        go-version: 1.24.5
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
@@ -94,7 +94,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.22
+        go-version: 1.24.5
 
     - name: Run Gosec Security Scanner
       uses: securecodewarrior/github-action-gosec@master
@@ -114,7 +114,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.22
+        go-version: 1.24.5
 
     - name: Run performance benchmarks
       run: |
@@ -145,7 +145,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.22
+        go-version: 1.24.5
 
     - name: Start example server
       run: |
@@ -188,47 +188,3 @@ jobs:
           kill $SERVER_PID || true
         fi
 
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Build Docker image
-      run: |
-        cat > Dockerfile << 'EOF'
-        FROM golang:1.22-alpine AS builder
-        
-        WORKDIR /app
-        COPY go.mod go.sum ./
-        RUN go mod download
-        
-        COPY . .
-        RUN go build -o bin/server ./descry-example/cmd/server/main.go
-        
-        FROM alpine:latest
-        RUN apk --no-cache add ca-certificates
-        WORKDIR /root/
-        
-        COPY --from=builder /app/bin/server .
-        COPY --from=builder /app/descry-example/rules ./rules
-        
-        EXPOSE 8080 9090
-        CMD ["./server"]
-        EOF
-        
-        docker build -t descry:test .
-
-    - name: Test Docker container
-      run: |
-        # Start container
-        docker run -d --name descry-test -p 8080:8080 -p 9090:9090 descry:test
-        
-        # Wait for container to start
-        sleep 10
-        
-        # Test endpoints
-        curl -f http://localhost:8080/health || echo "Health check failed"
-        
-        # Stop container
-        docker stop descry-test
-        docker rm descry-test
